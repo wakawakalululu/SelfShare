@@ -1,0 +1,32 @@
+[package]
+name = "selfshare-core"
+version = "1.0.0"
+edition = "2021"
+description = "SelfShare 同步内核：跨主机文件夹同步的 Rust 实现，供 GUI 与 CLI 共用"
+license = "MIT"
+
+[lib]
+name = "selfshare_core"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "selfshare-cli"
+path = "src/bin/cli.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+# 默认关闭 TLS：默认特性会引入 ring/cc，需要 C 工具链。
+# 需要 HTTPS 时启用 feature "tls"（要求本机有 cc 与 perl）。
+ureq = { version = "2", default-features = false }
+
+[features]
+default = []
+tls = ["ureq/tls"]
+
+[profile.release]
+opt-level = 2
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"

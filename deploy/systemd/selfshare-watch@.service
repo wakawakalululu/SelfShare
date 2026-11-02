@@ -1,0 +1,18 @@
+[Unit]
+Description=SelfShare watch for mount %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# %i 是实例名，对应 ~/.config/selfshare/%i.env
+EnvironmentFile=%h/.config/selfshare/%i.env
+WorkingDirectory=${SELFSHARE_PROJECT_DIR}
+ExecStart=/usr/bin/python3 ${SELFSHARE_PROJECT_DIR}/selfshare.py watch ${SELFSHARE_SYNC_FOLDER} --interval 5 --debounce 2 --full-interval 120
+Restart=on-failure
+RestartSec=10s
+TimeoutStopSec=30s
+KillSignal=SIGINT
+
+[Install]
+WantedBy=default.target

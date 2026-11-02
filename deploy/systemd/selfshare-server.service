@@ -1,0 +1,46 @@
+[Unit]
+Description=SelfShare cross-host sync server
+Documentation=file:/opt/selfshare/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=selfshare
+Group=selfshare
+WorkingDirectory=/opt/selfshare
+EnvironmentFile=-/etc/selfshare/server.env
+ExecStart=/usr/bin/python3 /opt/selfshare/selfshare.py server --root ${SELFSHARE_DATA_DIR} --host ${SELFSHARE_HOST} --port ${SELFSHARE_PORT}
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=30s
+TimeoutStopSec=30s
+KillSignal=SIGINT
+
+# 日志交给 journald；查看：journalctl -u selfshare-server -f
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=selfshare-server
+
+# 安全加固。服务只允许写入数据目录；程序目录只读。
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/selfshare
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+PrivateDevices=true
+SystemCallArchitectures=native
+
+# 资源边界（可按部署规模调整）
+LimitNOFILE=65536
+TasksMax=256
+
+[Install]
+WantedBy=multi-user.target

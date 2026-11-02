@@ -1,0 +1,28 @@
+name: selfshare_desktop
+description: SelfShare 跨主机同步桌面客户端（Flutter GUI + Rust Core）
+publish_to: none
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+  flutter: '>=3.19.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  ffi: ^2.1.3
+  file_picker: ^8.1.7
+  path: ^1.9.0
+  shared_preferences: ^2.3.5
+  window_manager: ^0.4.3
+  tray_manager: ^0.2.4
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.2
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/

@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "selfshare"
+version = "1.0.0"
+description = "跨主机文件夹同步：自建服务端 + 本地挂载目录，参考坚果云的同步文件夹体验"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "SelfShare" }]
+keywords = ["sync", "folder-sync", "file-sync", "nutstore", "cross-host"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: System :: Filesystems",
+]
+dependencies = []
+
+[project.scripts]
+selfshare = "selfshare.cli:main"
+
+[tool.setuptools]
+packages = ["selfshare"]
