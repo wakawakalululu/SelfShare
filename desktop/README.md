@@ -54,7 +54,23 @@ powershell -ExecutionPolicy Bypass -File desktop\scripts\build_windows.ps1
 5. `flutter build windows --release`
 6. 把 `selfshare_core.dll` 复制到应用目录
 
-> 当前开发机器未安装 Flutter SDK，因此本仓库已实测 Rust Core、C ABI 和服务端互通；Flutter 源码已做结构检查，但完整 GUI 构建需要在装有 Flutter 的构建机执行上述脚本。
+实测构建环境：Flutter 3.47.9 stable + VS 2022 BuildTools (MSVC 14.44) + Windows SDK 10.0.22621。
+
+已验证产物：
+
+```text
+build\windowsdunner\Release  selfshare_desktop.exe      1.7 MB
+  selfshare_core.dll         2.7 MB
+  flutter_windows.dll
+  datapp.so                5.7 MB （AOT 快照，含全部 ss_* FFI 调用）
+  data\icudtl.dat
+```
+
+冒烟结果：进程稳定运行，窗口句柄有效，标题 `SelfShare`，内存约 180 MB、57 线程。
+
+> 若 `flutter build` 报 "No CMAKE_CXX_COMPILER"，说明当前会话缺少 MSVC/SDK 环境变量；
+> `build_windows.ps1` 会自动探测 `VC\Tools\MSVC` 与 `Windows Kits\Include` 并注入
+> `INCLUDE`/`LIB`/`PATH`，无需手工开 vcvars 窗口。
 
 ## GUI 功能
 
