@@ -283,3 +283,101 @@ fn urlencode(s: &str) -> String {
     }
     out
 }
+
+// --------------------------------------------------------------------------- //
+// P2P：中心认证 + 节点直连
+// --------------------------------------------------------------------------- //
+#[derive(Debug, Clone, Deserialize)]
+pub struct PeerInfo {
+    pub peer_id: String,
+    pub listen: String,
+    #[serde(default)]
+    pub blob_count: i64,
+    #[serde(default)]
+    pub host_id: String,
+}
+
+impl Client {
+    /// 从中心服务器获取在线节点列表。
+    pub fn peers(&self, exclude_peer_id: Option<&str>) -> Result<Vec<PeerInfo>> {
+        let mut url = self.url("peers", "");
+        if let Some(p) = exclude_peer_id {
+            url.push_str(&format!("?exclude={}", urlencode(p)));
+        }
+        #[derive(Deserialize)]
+        struct Wrap {
+            #[serde(default)]
+            peers: Vec<PeerInfo>,
+        }
+        let wrap: Wrap = self.get_json(&url)?;
+        Ok(wrap.peers)
+    }
+
+    /// 直接从一个 peer 拉取 blob，用 HMAC 认证（token 不上网）。
+    pub fn get_blob_p2p(
+        &self,
+        digest: &str,
+        peer_listen: &str,
+        peer_id: &str,
+    ) -> Result<Vec<u8>> {
+        let nonce = random_nonce();
+        let mac = p2p_hmac(&self.token, &format!("{}:{}", self.vault, peer_id), digest, &nonce);
+        let url = format!(
+            "http://{}/p2p/blob/{}?peer_id={}&nonce={}",
+            peer_listen, digest, urlencode(peer_id), nonce
+        );
+        let resp = self
+            .agent
+            .get(&url)
+            .set("X-P2P-MAC", &mac)
+            .set("User-Agent", UA)
+            .timeout(Duration::from_secs(120))
+            .call()
+            .map_err(|e| self.to_remote(e))?;
+        let mut buf = Vec::new();
+        resp.into_reader()
+            .read_to_end(&mut buf)
+            .map_err(|e| RemoteError { message: e.to_string(), status: 0 })?;
+        Ok(buf)
+    }
+
+    /// 优先走 peer，全部失败后回退中心服务器。返回实际来源。
+    pub fn get_blob_with_peers(
+        &self,
+        digest: &str,
+        exclude_peer_id: Option<&str>,
+    ) -> Result<(Vec<u8>, String)> {
+        if let Ok(peers) = self.peers(exclude_peer_id) {
+            for p in peers {
+                if let Ok(data) = self.get_blob_p2p(digest, &p.listen, &p.peer_id) {
+                    return Ok((data, format!("peer:{}", p.listen)));
+                }
+            }
+        }
+        let data = self.get_blob_bytes(digest)?;
+        Ok((data, "server".to_string()))
+    }
+}
+
+/// HMAC-SHA256(token, "peer_id:digest:nonce")，与 Python 端保持一致。
+fn p2p_hmac(token: &str, peer_scope: &str, digest: &str, nonce: &str) -> String {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    type HmacSha256 = Hmac<Sha256>;
+    let mut mac = match HmacSha256::new_from_slice(token.as_bytes()) {
+        Ok(m) => m,
+        Err(_) => return String::new(),
+    };
+    mac.update(format!("{}:{}:{}", peer_scope, digest, nonce).as_bytes());
+    mac.finalize().into_bytes().iter().map(|b| format!("{:02x}", b)).collect()
+}
+
+fn random_nonce() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let mixed = nanos ^ ((std::process::id() as u128) << 64);
+    format!("{:032x}", mixed)
+}

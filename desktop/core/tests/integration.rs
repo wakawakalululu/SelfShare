@@ -331,3 +331,77 @@ fn ffi_surface_roundtrips() {
         assert!(msg.contains("error"));
     }
 }
+
+// --------------------------------------------------------------------------- //
+// P2P：Rust 节点 <-> Python 服务端 / Rust 客户端互通
+// --------------------------------------------------------------------------- //
+
+#[test]
+fn hmac_matches_python_implementation() {
+    // 与 Python `make_p2p_hmac` 使用同样的输入，验证两端口径一致。
+    let mac = selfshare_core::peer::hmac_hex("tok", "vault:peer1", "abcd", "n1");
+    assert_eq!(mac.len(), 64);
+    assert!(mac.chars().all(|c| c.is_ascii_hexdigit()));
+
+    // 同输入必须稳定
+    assert_eq!(mac, selfshare_core::peer::hmac_hex("tok", "vault:peer1", "abcd", "n1"));
+    // 任一字段变化都必须改变结果
+    assert_ne!(mac, selfshare_core::peer::hmac_hex("tok2", "vault:peer1", "abcd", "n1"));
+    assert_ne!(mac, selfshare_core::peer::hmac_hex("tok", "vault:peer1", "abce", "n1"));
+}
+
+#[test]
+fn rust_peer_serves_blob_to_rust_client() {
+    let Some(server) = start_server() else { return };
+    let a = std::env::temp_dir().join(format!("ss-rp-a-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&a);
+
+    // A 上传一个文件
+    write(&a, "shared.txt", "p2p payload from rust");
+    sync(&server, &a);
+    let digest = selfshare_core::util::sha256_file(&a.join("shared.txt")).unwrap();
+
+    let broker = Client::new(&server.url, &server.vault, &server.token);
+    let peer_id = "rust-peer-test".to_string();
+    let mut node = selfshare_core::PeerServer::start(
+        a.clone(),
+        server.vault.clone(),
+        server.token.clone(),
+        peer_id.clone(),
+        0,
+    )
+    .expect("peer start failed");
+    assert!(node.listen.contains(':'));
+
+    // 用 HMAC 直连拉取
+    let data = broker
+        .get_blob_p2p(&digest, &node.listen, &peer_id)
+        .expect("p2p fetch failed");
+    assert_eq!(data, b"p2p payload from rust");
+
+    node.stop();
+    let _ = fs::remove_dir_all(&a);
+}
+
+#[test]
+fn rust_peer_rejects_bad_mac() {
+    let Some(server) = start_server() else { return };
+    let a = std::env::temp_dir().join(format!("ss-rp-sec-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&a);
+    write(&a, "secret.txt", "classified");
+    sync(&server, &a);
+    let digest = selfshare_core::util::sha256_file(&a.join("secret.txt")).unwrap();
+
+    let mut node = selfshare_core::PeerServer::start(
+        a.clone(), server.vault.clone(), server.token.clone(), "p".into(), 0,
+    ).unwrap();
+
+    // 用错误 token 构造 MAC，必须被拒绝
+    let bad = selfshare_core::peer::hmac_hex("wrong", &format!("{}:p", server.vault), &digest, "n");
+    let url = format!("http://{}/p2p/blob/{}?peer_id=p&nonce=n", node.listen, digest);
+    let resp = ureq::get(&url).set("X-P2P-MAC", &bad).call();
+    assert!(resp.is_err(), "bad MAC must be rejected");
+
+    node.stop();
+    let _ = fs::remove_dir_all(&a);
+}

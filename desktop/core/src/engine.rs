@@ -108,16 +108,20 @@ pub struct Syncer {
     pub client: Client,
     pub state: LocalState,
     pub options: SyncOptions,
+    /// 启用 P2P 时填本节点 peer_id；None 表示只走中心服务器。
+    pub peer_id: Option<String>,
+    /// 每个文件的实际来源，便于界面/日志显示"peer 直连"还是"服务器"。
+    pub sources: std::collections::BTreeMap<String, String>,
 }
 
 impl Syncer {
     pub fn new(client: Client, state: LocalState) -> Self {
         let options = SyncOptions::load(state.folder());
-        Syncer { client, state, options }
+        Syncer { client, state, options, peer_id: None, sources: Default::default() }
     }
 
     pub fn with_options(client: Client, state: LocalState, options: SyncOptions) -> Self {
-        Syncer { client, state, options }
+        Syncer { client, state, options, peer_id: None, sources: Default::default() }
     }
 
     /// 只规划不执行，供 GUI 的「预演」按钮使用。
@@ -539,14 +543,21 @@ impl Syncer {
     }
 
     fn download(
-        &self,
+        &mut self,
         rel: &str,
         digest: &str,
         expect_size: Option<i64>,
         mtime: Option<f64>,
     ) -> Result<i64, String> {
         let dest = abs_path(self.state.folder(), rel)?;
-        let data = self.client.get_blob_bytes(digest).map_err(|e| e.to_string())?;
+        let (data, source) = if self.peer_id.is_some() {
+            self.client
+                .get_blob_with_peers(digest, self.peer_id.as_deref())
+                .map_err(|e| e.to_string())?
+        } else {
+            (self.client.get_blob_bytes(digest).map_err(|e| e.to_string())?, "server".to_string())
+        };
+        self.sources.insert(rel.to_string(), source);
         if let Some(want) = expect_size {
             if data.len() as i64 != want {
                 return Err(format!("校验失败：期望 {} 字节，收到 {} 字节", want, data.len()));

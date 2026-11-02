@@ -13,12 +13,14 @@
 pub mod client;
 pub mod engine;
 pub mod ffi;
+pub mod peer;
 pub mod state;
 pub mod util;
 pub mod watcher;
 
 pub use client::{Client, RemoteError};
 pub use engine::{SyncOptions, SyncReport, Syncer};
+pub use peer::PeerServer;
 pub use state::LocalState;
 
 /// 内核版本，GUI 里显示用。
