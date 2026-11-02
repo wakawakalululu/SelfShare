@@ -347,6 +347,8 @@ impl Client {
         digest: &str,
         exclude_peer_id: Option<&str>,
     ) -> Result<(Vec<u8>, String)> {
+        // 逐个 peer 尝试。不按 blob_count 预筛：节点可能按需扫描目录提供数据，
+        // 计数为 0 并不代表它没有该 blob。
         if let Ok(peers) = self.peers(exclude_peer_id) {
             for p in peers {
                 if let Ok(data) = self.get_blob_p2p(digest, &p.listen, &p.peer_id) {

@@ -233,8 +233,6 @@ class Client:
         """
         peers = self.peers(exclude_peer_id=exclude_peer_id)
         for peer in peers:
-            if digest not in peer.get("blobs", []) and peer.get("blob_count"):
-                continue
             try:
                 self.get_blob_p2p(digest, dest_path, peer["listen"], peer["peer_id"])
                 return "peer:%s" % peer["listen"]

@@ -72,6 +72,30 @@ fn main() -> ExitCode {
             let mut options = SyncOptions::load(state.folder());
             options.dry_run = dry;
             let mut syncer = Syncer::with_options(client, state, options);
+            // --p2p：先起节点服务，再让同步优先走 peer
+            let mut node = if args.iter().any(|a| a == "--p2p") {
+                let cfg2 = syncer.state.config().clone();
+                let peer_id = selfshare_core::peer::make_peer_id(&format!("rust-{}", selfshare_core::util::host_id()));
+                match selfshare_core::PeerServer::start(
+                    syncer.state.folder().to_path_buf(),
+                    cfg2.vault.clone(),
+                    cfg2.token.clone(),
+                    peer_id.clone(),
+                    0,
+                ) {
+                    Ok(n) => {
+                        println!("P2P 节点: {} (peer_id={})", n.listen, peer_id);
+                        syncer.peer_id = Some(peer_id);
+                        Some(n)
+                    }
+                    Err(e) => {
+                        eprintln!("P2P 启动失败，回退服务器模式：{}", e);
+                        None
+                    }
+                }
+            } else {
+                None
+            };
             if args[0] == "plan" {
                 match syncer.plan() {
                     Ok(actions) => {
@@ -85,7 +109,9 @@ fn main() -> ExitCode {
                     }
                 }
             } else {
-                match syncer.sync() {
+                let result = syncer.sync();
+                if let Some(n) = node.as_mut() { n.stop(); }
+                match result {
                     Ok(r) => {
                         println!("{}", r.summary());
                         for p in &r.pulls {
@@ -99,6 +125,11 @@ fn main() -> ExitCode {
                         }
                         for e in &r.errors {
                             println!("  ! {}", e);
+                        }
+                        if !syncer.sources.is_empty() {
+                            for (rel, src) in &syncer.sources {
+                                println!("    {} <- {}", rel, src);
+                            }
                         }
                     }
                     Err(e) => {

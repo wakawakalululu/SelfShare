@@ -144,19 +144,50 @@ class PeerNode:
 
     # -------------------------------------------------------------- serving ---
     def blob_path(self, digest: str) -> Optional[str]:
-        """把 blob 哈希映射到本地文件。blob 就是当前目录下的某个文件内容。"""
-        # 每次请求重新打开 LocalState，避免 SQLite 跨线程访问。
+        """把 blob 哈希映射到本地文件。
+
+        先查本地快照（快），未命中再扫描实际文件（准）。只依赖快照会漏掉
+        "已同步但状态库被重建/尚未记录"的文件，导致 peer 明明有数据却报 404。
+        """
+        full = self._from_state(digest) or self._scan_for(digest)
+        return full
+
+    def _from_state(self, digest: str) -> Optional[str]:
         from .sync import LocalState as _LS
-        st = _LS(self.folder)
+        try:
+            st = _LS(self.folder)
+        except Exception:
+            return None
         try:
             base = st.load()
         finally:
             st.close()
         for rel, entry in base.items():
             if entry.hash == digest and not entry.deleted:
-                full = os.path.join(self.folder, *rel.split("/"))
-                if os.path.isfile(full):
-                    return full
+                path = os.path.join(self.folder, *rel.split("/"))
+                if os.path.isfile(path):
+                    return path
+        return None
+
+    def _scan_for(self, digest: str) -> Optional[str]:
+        """兜底：按内容哈希在目录里找。限制耗时，避免大目录拖慢响应。"""
+        import time as _t
+        from .util import sha256_file
+
+        started = _t.time()
+        for dirpath, dirnames, filenames in os.walk(self.folder):
+            dirnames[:] = [d for d in dirnames if d not in (".selfshare", ".git", "$RECYCLE.BIN")]
+            for name in filenames:
+                if _t.time() - started > 20:
+                    return None
+                path = os.path.join(dirpath, name)
+                try:
+                    if os.path.getsize(path) == 0:
+                        continue
+                    if sha256_file(path) == digest:
+                        return path
+                except OSError:
+                    continue
         return None
 
     # --------------------------------------------------------- registration ---

@@ -270,6 +270,19 @@ class SyncServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
+    def handle_error(self, request, client_address) -> None:
+        """客户端正常断开（keep-alive 关闭、RST）不是服务端错误。
+
+        Rust/ureq 等客户端会用连接池并在空闲时直接关闭 socket，
+        socketserver 默认会把 ConnectionResetError 打成完整堆栈，淹没真正的错误。
+        """
+        import sys as _sys
+
+        exc = _sys.exc_info()[1]
+        if isinstance(exc, (ConnectionResetError, ConnectionAbortedError, BrokenPipeError)):
+            return
+        super().handle_error(request, client_address)
+
     def __init__(self, address: Tuple[str, int], root: str, quiet: bool = False):
         super().__init__(address, Handler)
         self.registry = Registry(root)

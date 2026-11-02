@@ -94,6 +94,21 @@ impl Drop for PeerServer {
     }
 }
 
+/// 生成进程内唯一的 peer_id。
+///
+/// 只按 host_id 命名会让同一台机器上的多个挂载点互相冲突（并被吸引到
+/// 同一个 exclude 过滤），因此追加启动时间与进程内序号。
+pub fn make_peer_id(host: &str) -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0);
+    format!("{}-{:x}{:x}", host, nanos & 0xffff_ffff, seq)
+}
+
 /// 取本机对外的局域网 IP，供其他主机连接。
 fn advertise_host() -> String {
     // 连一个外部地址拿到出口 IP，不会真的发包。
