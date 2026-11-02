@@ -59,7 +59,9 @@ python selfshare.py watch D:\同步盘 --p2p
 | Rust 集成测试（对接真实 Python 服务端） | 6/6 通过 |
 | `flutter analyze` | No issues found |
 | `flutter build windows --release` | 成功 |
-| GUI 冒烟（窗口创建、稳定运行） | 通过，180 MB / 57 线程 |
+| GUI 冒烟（窗口创建、稳定运行） | 通过，180 MB / 55 线程 |
+| Rust P2P 集成测试 | 3/3 通过（HMAC 一致、节点服务、坏 MAC 拒绝） |
+| 端到端 P2P 实测 | 通过，客户端输出 `<- peer:127.0.0.1:49376` |
 
 ## 已知边界
 

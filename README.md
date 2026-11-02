@@ -33,6 +33,17 @@ python selfshare.py watch D:\同步盘 --p2p
 - 元数据（manifest / commit / history）始终走中心服务器，保证全局一致
 - 节点下线后中心端按 TTL（300s）自动剔除
 
+Rust 内核（GUI 与 `selfshare-cli`）同样支持 P2P，与 Python 节点互通：
+
+```powershell
+selfshare-cli sync  D:\同步盘 --p2p
+selfshare-cli watch D:\同步盘 --p2p
+```
+
+两端 HMAC 实现逐字节一致（已用相同输入比对校验），因此 Python 节点与 Rust 节点可互为 peer。
+
+实测：Rust 客户端拉取时输出 `p2p.txt <- peer:127.0.0.1:49376`，数据未经中心服务器转发。节点不可达时自动回退，输出 `<- server`。
+
 > 当前面向局域网直连场景；公网 NAT 穿透（打洞/中继）列入后续工作。
 
 ## 快速开始

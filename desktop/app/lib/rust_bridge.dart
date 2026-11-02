@@ -202,6 +202,7 @@ class RustBridge {
     String folder, {
     int intervalSecs = 5,
     int debounceSecs = 2,
+    bool p2p = false,
   }) {
     _unwrap(_callOne(
       _watchStart,
@@ -209,6 +210,7 @@ class RustBridge {
         'folder': folder,
         'interval_secs': intervalSecs,
         'debounce_secs': debounceSecs,
+        'p2p': p2p,
       }),
     ));
   }

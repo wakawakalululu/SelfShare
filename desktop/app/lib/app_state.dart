@@ -44,6 +44,7 @@ class AppState extends ChangeNotifier {
   int selectedIndex = -1;
   bool loading = false;
   bool watching = false;
+  bool p2pEnabled = false;
   bool startWithWindows = false;
   String status = '就绪';
   String? error;
@@ -61,6 +62,7 @@ class AppState extends ChangeNotifier {
   Future<void> initialise() async {
     final prefs = await SharedPreferences.getInstance();
     startWithWindows = await Autostart.isEnabled();
+    p2pEnabled = prefs.getBool('p2pEnabled') ?? false;
     final folders = prefs.getStringList('mountFolders') ?? const [];
     for (final folder in folders) {
       try {
@@ -168,12 +170,24 @@ class AppState extends ChangeNotifier {
     final mount = selected;
     if (mount == null || watching) return;
     try {
-      bridge.watchStart(mount.folder);
+      bridge.watchStart(mount.folder, p2p: p2pEnabled);
       watching = true;
       status = '自动同步已开启';
       _setWatchPreference(true);
     } catch (e) {
       error = e.toString();
+    }
+    notifyListeners();
+  }
+
+  Future<void> setP2P(bool value) async {
+    p2pEnabled = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('p2pEnabled', value);
+    // 重启 watch 让新设置生效
+    if (watching) {
+      stopWatch();
+      startWatch();
     }
     notifyListeners();
   }

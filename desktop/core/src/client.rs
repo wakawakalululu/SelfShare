@@ -298,6 +298,38 @@ pub struct PeerInfo {
 }
 
 impl Client {
+    /// 向中心服务器注册本节点。
+    pub fn peer_register(
+        &self,
+        peer_id: &str,
+        listen: &str,
+        blobs: &[String],
+        host_id: &str,
+    ) -> Result<()> {
+        let body = serde_json::json!({
+            "peer_id": peer_id,
+            "listen": listen,
+            "blobs": blobs,
+            "host_id": host_id,
+            "version": crate::VERSION,
+        });
+        self.request("POST", &self.url("peer/register", ""))
+            .set("Content-Type", "application/json")
+            .send_string(&body.to_string())
+            .map(|_| ())
+            .map_err(|e| self.to_remote(e))
+    }
+
+    /// 心跳，维持节点在线状态。
+    pub fn peer_heartbeat(&self, peer_id: &str, blob_count: i64) -> Result<()> {
+        let body = serde_json::json!({ "peer_id": peer_id, "blob_count": blob_count });
+        self.request("POST", &self.url("peer/heartbeat", ""))
+            .set("Content-Type", "application/json")
+            .send_string(&body.to_string())
+            .map(|_| ())
+            .map_err(|e| self.to_remote(e))
+    }
+
     /// 从中心服务器获取在线节点列表。
     pub fn peers(&self, exclude_peer_id: Option<&str>) -> Result<Vec<PeerInfo>> {
         let mut url = self.url("peers", "");

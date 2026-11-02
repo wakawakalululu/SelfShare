@@ -321,6 +321,8 @@ struct WatchRequest {
     interval_secs: u64,
     #[serde(default = "default_debounce")]
     debounce_secs: u64,
+    #[serde(default)]
+    p2p: bool,
 }
 
 fn default_interval() -> u64 {
@@ -356,6 +358,7 @@ pub unsafe extern "C" fn ss_watch_start(req_json: *const c_char) -> *mut c_char 
         PathBuf::from(&folder),
         req.interval_secs,
         req.debounce_secs,
+        req.p2p,
         {
             move |msg, cur, total| {
                 set_progress(|p| {

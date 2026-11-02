@@ -662,6 +662,13 @@ class _Settings extends StatelessWidget {
                   subtitle: const Text('本地变更静默 2 秒后同步；每 120 秒巡检远端'),
                   onChanged: (v) => v ? state.startWatch() : state.stopWatch(),
                 ),
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  value: state.p2pEnabled,
+                  title: const Text('P2P 直连传输'),
+                  subtitle: const Text('中心服务器只做认证与发现，文件优先在主机之间直传'),
+                  onChanged: state.setP2P,
+                ),
               ]),
             ),
           ),
