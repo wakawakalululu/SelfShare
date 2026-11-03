@@ -105,8 +105,9 @@ jobs:
       - name: Extract release notes from CHANGELOG
         id: notes
         run: |
-          TAG="${GITHUB_REF_NAME}"
-          if [ -z "$TAG" ]; then TAG="${{ github.event.inputs.tag }}"; fi
+          # workflow_dispatch 时 GITHUB_REF_NAME 是分支名，必须优先用输入
+          TAG="${{ github.event.inputs.tag }}"
+          if [ -z "$TAG" ]; then TAG="${GITHUB_REF_NAME}"; fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           # 取 CHANGELOG 中该版本小节；找不到则用整份文件
           awk -v t="${TAG#v}" '
@@ -119,6 +120,7 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
+          # 明确指定 tag：workflow_dispatch 时 github.ref_name 是分支名
           tag_name: ${{ steps.notes.outputs.tag }}
           name: SelfShare ${{ steps.notes.outputs.tag }}
           body_path: notes.md
