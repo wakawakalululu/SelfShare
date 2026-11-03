@@ -175,6 +175,51 @@ class Client:
             _silent_remove(tmp)
             raise
 
+    # ------------------------------------------------------------- pairing ---
+    @staticmethod
+    def pair(base_url: str, code: str, timeout: float = 20.0) -> Dict[str, Any]:
+        """用配对码换取 vault 令牌。需要网络，不需要预先知道库名。"""
+        import json as _json
+
+        url = base_url.rstrip("/") + "/api/pair"
+        payload = _json.dumps({"code": code}).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=payload,
+            method="POST",
+            headers={"Content-Type": "application/json", "User-Agent": UA},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                data = _json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            body = ""
+            try:
+                body = exc.read().decode("utf-8", "replace")
+                body = _json.loads(body).get("error", body)
+            except Exception:
+                pass
+            raise RemoteError("配对失败：%s" % (body or exc.code), exc.code) from None
+        except urllib.error.URLError as exc:
+            raise RemoteError("无法连接 %s：%s" % (base_url, exc.reason)) from None
+        if not data.get("token"):
+            raise RemoteError("配对响应缺少令牌")
+        return data
+
+    @staticmethod
+    def probe(base_url: str, timeout: float = 8.0) -> bool:
+        """检查地址是否为 SelfShare 服务端。"""
+        import json as _json
+
+        try:
+            with urllib.request.urlopen(
+                base_url.rstrip("/") + "/api/pair", timeout=timeout
+            ) as resp:
+                data = _json.loads(resp.read().decode("utf-8"))
+            return bool(data.get("service") == "selfshare")
+        except Exception:
+            return False
+
     # ---------------------------------------------------------------- p2p ---
     def peers(self, exclude_peer_id: Optional[str] = None) -> list:
         query = "exclude=" + exclude_peer_id if exclude_peer_id else ""
