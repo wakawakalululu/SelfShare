@@ -129,6 +129,20 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 return
 
+            # 配对：唯一无需令牌的写接口。配对码一次性、短时效。
+            if parts[:2] == ["api", "pair"] and method == "POST":
+                self._handle_pair()
+                return
+            if parts[:2] == ["api", "pair"] and method == "GET":
+                # 只回显服务信息，便于客户端输入码前先确认地址可达
+                self._send_json(200, {
+                    "ok": True,
+                    "service": "selfshare",
+                    "version": "1.0",
+                    "pairing": True,
+                })
+                return
+
             if len(parts) < 4 or parts[0] != "api" or parts[1] != "v":
                 raise HandlerError(404, "unknown endpoint %s" % self.path)
             vault_id = parts[2]
@@ -220,6 +234,40 @@ class Handler(BaseHTTPRequestHandler):
             traceback.print_exc()
             self._send_error_json(500, "internal error")
 
+    # ------------------------------------------------------------- pairing ---
+    def _handle_pair(self) -> None:
+        """用配对码换取 vault 令牌。无需预先持有令牌。"""
+        body = self._read_body()
+        try:
+            req = json.loads(body.decode("utf-8") or "{}")
+        except ValueError:
+            raise HandlerError(400, "body must be JSON")
+        code = str(req.get("code") or "")
+        if not code.strip():
+            raise HandlerError(400, "code is required")
+
+        # 逐个 vault 查这张码（码表按 vault 分文件）
+        for vault_id in self.registry.list_vaults():
+            vault = self.registry.open_vault(vault_id)
+            try:
+                from .pairing import PairCodeStore
+
+                store = PairCodeStore(vault.path)
+                hit = store.redeem(code)
+            finally:
+                vault.close()
+            if hit:
+                token = self.registry.current_token(vault_id)
+                if not token:
+                    raise HandlerError(409, "vault token unavailable; rotate it")
+                self._send_json(200, {
+                    "vault": vault_id,
+                    "token": token,
+                    "note": hit.get("note", ""),
+                })
+                return
+        raise HandlerError(404, "配对码无效、已使用或已过期")
+
     # --------------------------------------------------------------- blobs ---
     def _handle_put_blob(self, vault: Vault, digest: str) -> None:
         body = self._read_body()
@@ -303,10 +351,41 @@ def serve(root: str, host: str = "0.0.0.0", port: int = 8484,
         server.socket = ctx.wrap_socket(server.socket, server_side=True)
         scheme = "https"
     actual_host, actual_port = server.server_address[0], server.server_address[1]
-    print("SelfShare server listening on %s://%s:%s" % (scheme, _display_host(host), actual_port))
+    display = _display_host(host)
+    print("SelfShare server listening on %s://%s:%s" % (scheme, display, actual_port))
     print("  data root : %s" % os.path.abspath(root))
     vaults = server.registry.list_vaults()
     print("  vaults    : %s" % (", ".join(vaults) if vaults else "(none yet)"))
+
+    # 零配置起步：没有库就自动建一个，并直接打印配对码
+    if not vaults:
+        info = server.registry.create_vault("default", note="auto-created")
+        vaults = ["default"]
+        print("  已自动创建同步库: default")
+
+    if not quiet:
+        try:
+            from .pairing import PairCodeStore
+
+            first = vaults[0]
+            vault = server.registry.open_vault(first)
+            try:
+                code = PairCodeStore(vault.path).issue(first, ttl=1800, note="启动自动生成")
+            finally:
+                vault.close()
+            print()
+            print("  ┌──────────────────────────────────────────────┐")
+            print("  │  在另一台设备上连接（配对码 30 分钟内有效）  │")
+            print("  └──────────────────────────────────────────────┘")
+            print("     地址  : %s://%s:%s" % (scheme, display, actual_port))
+            print("     配对码: %s" % code["code"])
+            print()
+            print("     桌面端：打开 SelfShare → 「连接同步文件夹」→ 填入上面两项")
+            print("     命令行：selfshare pair D:\同步盘 --url %s://%s:%s --code %s"
+                  % (scheme, display, actual_port, code["code"]))
+            print()
+        except Exception as exc:  # 配对码失败不应影响服务启动
+            print("  （配对码生成失败：%s）" % exc)
     print("  press Ctrl+C to stop")
     try:
         server.serve_forever()
