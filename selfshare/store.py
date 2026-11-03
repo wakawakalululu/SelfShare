@@ -381,10 +381,40 @@ class Registry:
                 "note": note,
                 "salt": salt,
                 "token_sha256": _digest_token(token, salt),
+                # 供配对兑换使用；旧库没有该字段时优雅降级
+                "token_sealed": seal_token(token, self._key()),
             }
             self.save()
         os.makedirs(self.vault_path(vault_id), exist_ok=True)
         return {"vault": vault_id, "token": token}
+
+    def _key(self) -> bytes:
+        """服务端本地密钥：首次使用时生成并保存，权限尽量收紧。"""
+        with self._lock:
+            raw = self.data.get("_seal_key")
+            if not raw:
+                raw = secrets.token_hex(32)
+                self.data["_seal_key"] = raw
+                self.save()
+                try:
+                    os.chmod(self.file, 0o600)
+                except OSError:
+                    pass
+            return bytes.fromhex(raw)
+
+    def current_token(self, vault_id: str) -> Optional[str]:
+        """取出该 vault 当前令牌，供配对兑换。
+
+        兼容旧数据：若没有密文（早期版本只存哈希），返回 None，
+        调用方应提示用户 rotate 一次。
+        """
+        info = self.data.get("vaults", {}).get(vault_id)
+        if not info:
+            return None
+        sealed = info.get("token_sealed")
+        if not sealed:
+            return None
+        return open_token(sealed, self._key())
 
     def check_token(self, vault_id: str, token: str) -> bool:
         self._refresh()
@@ -402,6 +432,7 @@ class Registry:
         with self._lock:
             self.data["vaults"][vault_id]["salt"] = salt
             self.data["vaults"][vault_id]["token_sha256"] = _digest_token(token, salt)
+            self.data["vaults"][vault_id]["token_sealed"] = seal_token(token, self._key())
             self.save()
         return {"vault": vault_id, "token": token}
 
@@ -415,3 +446,46 @@ class Registry:
 
 def _digest_token(token: str, salt: str) -> str:
     return hashlib.sha256((salt + ":" + token).encode("utf-8")).hexdigest()
+
+
+# --------------------------------------------------------------------------- #
+# 令牌的可逆存储
+# --------------------------------------------------------------------------- #
+# 配对功能需要在兑换时把令牌交回客户端，因此令牌必须可还原。
+# 这里用服务端密钥做 SHA-256 计数器模式的字节流异或：
+#   - 防止直接 grep server.json 就能读到令牌
+#   - 不防服务端被完全攻陷（密钥与密文同处一地）
+# 这是刻意的取舍：配对码本身一次性、短时效，风险窗口很小。
+def _keystream(key: bytes, nonce: bytes, length: int) -> bytes:
+    out = bytearray()
+    counter = 0
+    while len(out) < length:
+        h = hashlib.sha256()
+        h.update(key)
+        h.update(nonce)
+        h.update(counter.to_bytes(8, "big"))
+        out.extend(h.digest())
+        counter += 1
+    return bytes(out[:length])
+
+
+def seal_token(token: str, key: bytes) -> Dict[str, str]:
+    nonce = secrets.token_bytes(12)
+    data = token.encode("utf-8")
+    stream = _keystream(key, nonce, len(data))
+    cipher = bytes(a ^ b for a, b in zip(data, stream))
+    return {"nonce": nonce.hex(), "cipher": cipher.hex()}
+
+
+def open_token(sealed: Dict[str, str], key: bytes) -> Optional[str]:
+    try:
+        nonce = bytes.fromhex(sealed["nonce"])
+        cipher = bytes.fromhex(sealed["cipher"])
+    except (KeyError, ValueError, TypeError):
+        return None
+    stream = _keystream(key, nonce, len(cipher))
+    raw = bytes(a ^ b for a, b in zip(cipher, stream))
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
