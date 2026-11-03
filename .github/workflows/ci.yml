@@ -77,7 +77,7 @@ jobs:
 
       - name: Test
         working-directory: desktop/core
-        run: cargo test --release
+        run: cargo test --release -- --nocapture
 
       - name: Integration tests against Python server
         working-directory: desktop/core
