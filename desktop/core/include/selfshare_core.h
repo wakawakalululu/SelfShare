@@ -16,6 +16,8 @@ SS_EXPORT void ss_free(char *ptr);
 SS_EXPORT char *ss_init(void);
 SS_EXPORT char *ss_version(void);
 SS_EXPORT char *ss_mount(const char *request_json);
+SS_EXPORT char *ss_pair(const char *request_json);
+SS_EXPORT char *ss_probe(const char *url_utf8);
 SS_EXPORT char *ss_unmount(const char *folder_utf8);
 SS_EXPORT char *ss_mount_info(const char *folder_utf8);
 SS_EXPORT char *ss_find_mount(const char *path_utf8);
