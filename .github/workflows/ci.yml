@@ -150,7 +150,14 @@ jobs:
 
       - name: Build Windows release
         working-directory: desktop/app
-        run: flutter build windows --release
+        shell: pwsh
+        run: |
+          flutter build windows --release 2>&1 | Tee-Object -FilePath build.log
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "=== build.log tail ==="
+            Get-Content build.log -Tail 120 | ForEach-Object { Write-Host "::error::$_" }
+            throw "flutter build windows failed"
+          }
 
       - name: Bundle Rust DLL and verify
         shell: pwsh
