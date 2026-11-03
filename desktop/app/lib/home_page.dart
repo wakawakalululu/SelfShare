@@ -61,99 +61,159 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  /// 主入口：输入配对码 + 选目录，两步完成。
   Future<void> _showAddMount() async {
     final folder = TextEditingController();
     final url = TextEditingController(text: 'http://');
-    final vault = TextEditingController();
-    final token = TextEditingController();
+    final code = TextEditingController();
     final formKey = GlobalKey<FormState>();
-    var obscure = true;
+    var busy = false;
+    var probing = false;
+    String? probeMsg;
 
     final submit = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('添加同步文件夹'),
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (dialogCtx, setDialogState) => AlertDialog(
+          title: const Row(children: [
+            Icon(Icons.link_rounded, size: 20),
+            SizedBox(width: 8),
+            Text('连接同步文件夹'),
+          ]),
           content: SizedBox(
-            width: 520,
+            width: 560,
             child: Form(
               key: formKey,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _FolderField(controller: folder),
-                  const SizedBox(height: 14),
-                  TextFormField(
-                    controller: url,
-                    decoration: const InputDecoration(
-                      labelText: '服务端地址',
-                      hintText: 'http://192.168.1.10:8484',
-                      prefixIcon: Icon(Icons.dns_outlined),
-                    ),
-                    validator: _required,
-                  ),
-                  const SizedBox(height: 14),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: vault,
-                          decoration: const InputDecoration(labelText: '同步库', hintText: 'work'),
-                          validator: _required,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextFormField(
-                          controller: token,
-                          obscureText: obscure,
-                          decoration: InputDecoration(
-                            labelText: '访问令牌',
-                            suffixIcon: IconButton(
-                              icon: Icon(obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
-                              onPressed: () => setDialogState(() => obscure = !obscure),
-                            ),
-                          ),
-                          validator: _required,
-                        ),
-                      ),
-                    ],
+                  const _InfoStrip(
+                    icon: Icons.lightbulb_outline,
+                    text: '在已运行 SelfShare 的电脑上执行 `selfshare vault pair-code <库名>`，'
+                        '把打印出的配对码填到下面即可。',
                   ),
                   const SizedBox(height: 16),
-                  const _InfoStrip(
-                    icon: Icons.security_outlined,
-                    text: '令牌只保存在该文件夹的 .selfshare/config.json；不会同步到服务端。',
+                  _FolderField(controller: folder),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: url,
+                    readOnly: probing,
+                    onChanged: (_) => setDialogState(() => probeMsg = null),
+                    decoration: InputDecoration(
+                      labelText: '服务端地址',
+                      hintText: 'http://192.168.1.10:8484',
+                      prefixIcon: const Icon(Icons.dns_outlined),
+                      suffixIcon: probing
+                          ? const Padding(
+                              padding: EdgeInsets.all(12),
+                              child: SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                            )
+                          : IconButton(
+                              icon: const Icon(Icons.wifi_tethering),
+                              tooltip: '测试连接',
+                              onPressed: () async {
+                                setDialogState(() {
+                                  probing = true;
+                                  probeMsg = null;
+                                });
+                                final ok = await state.bridge.probe(url.text.trim());
+                                setDialogState(() {
+                                  probing = false;
+                                  probeMsg = ok ? '连接正常' : '连不上，检查地址与服务端状态';
+                                });
+                              },
+                            ),
+                    ),
+                    validator: (v) => v == null || v.trim().isEmpty ? '不能为空' : null,
                   ),
+                  if (probeMsg != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6, left: 4),
+                      child: Text(
+                        probeMsg!,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: probeMsg == '连接正常'
+                              ? const Color(0xFF16A34A)
+                              : const Color(0xFFDC2626),
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: code,
+                    style: const TextStyle(
+                      fontFamily: 'Consolas',
+                      fontSize: 18,
+                      letterSpacing: 2,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: '配对码',
+                      hintText: 'SS-XXXX-XXXX-XXXX',
+                      prefixIcon: Icon(Icons.vpn_key_outlined),
+                    ),
+                    validator: (v) => v == null || v.trim().isEmpty ? '不能为空' : null,
+                  ),
+                  const SizedBox(height: 14),
+                  Row(children: [
+                    const Icon(Icons.schedule, size: 14, color: Color(0xFF64748B)),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        '配对码一次性有效、默认 30 分钟过期；用后作废。',
+                        style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                      ),
+                    ),
+                  ]),
                 ],
               ),
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+            TextButton(
+              onPressed: busy ? null : () => Navigator.pop(dialogCtx, false),
+              child: const Text('取消'),
+            ),
             FilledButton.icon(
-              onPressed: () {
-                if (formKey.currentState!.validate()) Navigator.pop(context, true);
-              },
-              icon: const Icon(Icons.add),
-              label: const Text('连接并添加'),
+              onPressed: busy
+                  ? null
+                  : () async {
+                      if (!formKey.currentState!.validate()) return;
+                      setDialogState(() => busy = true);
+                      final ok = await state.pairMount(
+                        folder: folder.text.trim(),
+                        url: url.text.trim(),
+                        code: code.text.trim(),
+                      );
+                      if (dialogCtx.mounted) {
+                        setDialogState(() => busy = false);
+                        if (ok) Navigator.pop(dialogCtx, true);
+                      }
+                    },
+              icon: busy
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.link),
+              label: Text(busy ? '正在连接…' : '连接'),
             ),
           ],
         ),
       ),
     );
-
-    if (submit == true) {
-      await state.addMount(
-        folder: folder.text.trim(),
-        url: url.text.trim(),
-        vault: vault.text.trim(),
-        token: token.text.trim(),
-      );
+    if (submit == true && mounted) {
+      // 由 AppState.pairMount 负责刷新列表与提示
     }
   }
 
-  static String? _required(String? value) => value == null || value.trim().isEmpty ? '不能为空' : null;
 }
 
 class _TitleBar extends StatelessWidget {
