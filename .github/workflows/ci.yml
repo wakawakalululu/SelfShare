@@ -62,6 +62,11 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      # 集成测试会拉起 Python 服务端，必须先装好解释器
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: desktop/core
@@ -73,11 +78,6 @@ jobs:
       - name: Test
         working-directory: desktop/core
         run: cargo test --release
-
-      # 集成测试会拉起 Python 服务端，确保 runner 上有 python
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
 
       - name: Integration tests against Python server
         working-directory: desktop/core
