@@ -42,6 +42,8 @@ class RustBridge {
     _shutdown = _lib.lookupFunction<_NoArgNative, _NoArgDart>('ss_shutdown');
 
     _mount = _lib.lookupFunction<_OneArgNative, _OneArgDart>('ss_mount');
+    _pair = _lib.lookupFunction<_OneArgNative, _OneArgDart>('ss_pair');
+    _probe = _lib.lookupFunction<_OneArgNative, _OneArgDart>('ss_probe');
     _unmount = _lib.lookupFunction<_OneArgNative, _OneArgDart>('ss_unmount');
     _mountInfo =
         _lib.lookupFunction<_OneArgNative, _OneArgDart>('ss_mount_info');
@@ -72,6 +74,8 @@ class RustBridge {
   late final _NoArgDart _watchStatus;
   late final _NoArgDart _shutdown;
   late final _OneArgDart _mount;
+  late final _OneArgDart _pair;
+  late final _OneArgDart _probe;
   late final _OneArgDart _unmount;
   late final _OneArgDart _mountInfo;
   late final _OneArgDart _plan;
@@ -161,6 +165,31 @@ class RustBridge {
         }),
       );
       return Map<String, dynamic>.from(bridge._unwrap(response));
+    });
+  }
+
+  /// 配对码一键挂载：换令牌 + 写入配置 + 首次同步。
+  Future<Map<String, dynamic>> pair({
+    required String folder,
+    required String url,
+    required String code,
+  }) async {
+    return Isolate.run(() {
+      final bridge = RustBridge._(_openLibrary());
+      final response = bridge._callOne(
+        bridge._pair,
+        jsonEncode({'folder': folder, 'url': url, 'code': code}),
+      );
+      return Map<String, dynamic>.from(bridge._unwrap(response));
+    });
+  }
+
+  /// 地址是否为 SelfShare 服务端。
+  Future<bool> probe(String url) async {
+    return Isolate.run(() {
+      final bridge = RustBridge._(_openLibrary());
+      final data = bridge._unwrap(bridge._callOne(bridge._probe, url));
+      return data is Map && data['ok'] == true;
     });
   }
 
