@@ -18,12 +18,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/configure-pages@v5
 
       - name: Build with Jekyll
         uses: actions/jekyll-build-pages@v1
@@ -31,16 +32,19 @@ jobs:
           source: ./docs
           destination: ./_site
 
+      - name: Report Pages config
+        run: |
+          echo "repo=$GITHUB_REPOSITORY ref=$GITHUB_REF"
+          curl -sS -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/pages" || true
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: ./_site
 
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          timeout: 600000
+          error_count: 20
+          reporting_interval: 10000
