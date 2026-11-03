@@ -160,6 +160,114 @@ pub unsafe extern "C" fn ss_mount(req_json: *const c_char) -> *mut c_char {
     }
 }
 
+#[derive(serde::Deserialize)]
+struct PairRequest {
+    folder: String,
+    url: String,
+    code: String,
+}
+
+/// 傻瓜式配对：一个配对码完成「建目录 → 换令牌 → 挂载 → 首次同步」。
+#[no_mangle]
+pub unsafe extern "C" fn ss_pair(req_json: *const c_char) -> *mut c_char {
+    let Some(raw) = from_c(req_json) else {
+        return err_json("缺少参数");
+    };
+    let req: PairRequest = match serde_json::from_str(raw) {
+        Ok(r) => r,
+        Err(e) => return err_json(format!("参数解析失败：{}", e)),
+    };
+    let mut url = req.url.trim().trim_end_matches('/').to_string();
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        url = format!("http://{}", url);
+    }
+    set_progress(|p| {
+        p.state = "syncing".into();
+        p.message = "正在配对…".into();
+        p.last_error = None;
+    });
+
+    let (vault, token) = match Client::pair(&url, &req.code) {
+        Ok(v) => v,
+        Err(e) => {
+            set_progress(|p| {
+                p.state = "error".into();
+                p.last_error = Some(e.to_string());
+                p.message = e.to_string();
+            });
+            return err_json(e.to_string());
+        }
+    };
+
+    let folder = PathBuf::from(&req.folder);
+    let cfg = MountConfig {
+        url: url.clone(),
+        vault: vault.clone(),
+        token: token.clone(),
+        folder: folder.to_string_lossy().to_string(),
+        host_id: crate::util::host_id(),
+        created: crate::util::now_stamp(),
+    };
+    if let Err(e) = LocalState::init_mount(&folder, cfg) {
+        set_progress(|p| {
+            p.state = "error".into();
+            p.last_error = Some(e.clone());
+        });
+        return err_json(e);
+    }
+
+    // 首次同步，让用户配对完就立刻看到内容
+    let mut syncer = match make_syncer(&folder.to_string_lossy()) {
+        Ok(s) => s,
+        Err(e) => return err_json(e),
+    };
+    let mut cb = |msg: &str, cur: usize, total: usize| {
+        set_progress(|p| {
+            p.message = msg.to_string();
+            p.current = cur;
+            p.total = total;
+        });
+    };
+    let report = syncer.sync_with_progress(Some(&mut cb));
+    match report {
+        Ok(r) => {
+            set_progress(|p| {
+                p.state = "idle".into();
+                p.message = r.summary();
+                p.last_sync_at = crate::util::now_stamp();
+                p.last_report = Some(r.clone());
+            });
+            ok_json(&json!({
+                "vault": vault,
+                "folder": folder.to_string_lossy(),
+                "url": url,
+                "pulls": r.pulls.len(),
+                "pushes": r.pushes.len(),
+                "summary": r.summary(),
+            }))
+        }
+        Err(e) => ok_json(&json!({
+            "vault": vault,
+            "folder": folder.to_string_lossy(),
+            "url": url,
+            "warning": format!("挂载成功，但首次同步失败：{}", e),
+        })),
+    }
+}
+
+/// 探测地址是否为 SelfShare 服务端（用于输入框即时校验）。
+#[no_mangle]
+pub unsafe extern "C" fn ss_probe(url: *const c_char) -> *mut c_char {
+    let Some(url) = from_c(url) else {
+        return err_json("缺少地址");
+    };
+    let mut u = url.trim().trim_end_matches('/').to_string();
+    if !u.starts_with("http://") && !u.starts_with("https://") {
+        u = format!("http://{}", u);
+    }
+    ok_json(&json!({ "ok": Client::probe(&u) }))
+}
+
 /// 卸载：删除配置与状态（本地文件保留）。
 #[no_mangle]
 pub unsafe extern "C" fn ss_unmount(folder: *const c_char) -> *mut c_char {
