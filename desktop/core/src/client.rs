@@ -298,6 +298,57 @@ pub struct PeerInfo {
 }
 
 impl Client {
+    /// 用配对码换取 vault 令牌（不需要预先知道库名）。
+    pub fn pair(base_url: &str, code: &str) -> Result<(String, String)> {
+        let url = format!("{}/api/pair", base_url.trim_end_matches('/'));
+        let body = serde_json::json!({ "code": code });
+        let resp = ureq::post(&url)
+            .set("Content-Type", "application/json")
+            .set("User-Agent", UA)
+            .timeout(Duration::from_secs(25))
+            .send_string(&body.to_string());
+        let resp = match resp {
+            Ok(r) => r,
+            Err(ureq::Error::Status(c, r)) => {
+                let detail = r.into_string().unwrap_or_default();
+                let msg = serde_json::from_str::<serde_json::Value>(&detail)
+                    .ok()
+                    .and_then(|v| v.get("error").and_then(|e| e.as_str()).map(String::from))
+                    .unwrap_or(detail);
+                return Err(RemoteError { message: format!("配对失败：{}", msg), status: c });
+            }
+            Err(ureq::Error::Transport(t)) => {
+                return Err(RemoteError {
+                    message: format!("无法连接 {}：{}", base_url, t),
+                    status: 0,
+                })
+            }
+        };
+        let text = resp
+            .into_string()
+            .map_err(|e| RemoteError { message: e.to_string(), status: 0 })?;
+        let v: serde_json::Value = serde_json::from_str(&text)
+            .map_err(|e| RemoteError { message: format!("配对响应解析失败：{}", e), status: 0 })?;
+        let vault = v.get("vault").and_then(|x| x.as_str()).unwrap_or_default().to_string();
+        let token = v.get("token").and_then(|x| x.as_str()).unwrap_or_default().to_string();
+        if vault.is_empty() || token.is_empty() {
+            return Err(RemoteError { message: "配对响应缺少字段".into(), status: 0 });
+        }
+        Ok((vault, token))
+    }
+
+    /// 检查地址是否为 SelfShare 服务端。
+    pub fn probe(base_url: &str) -> bool {
+        let url = format!("{}/api/pair", base_url.trim_end_matches('/'));
+        match ureq::get(&url).timeout(Duration::from_secs(8)).call() {
+            Ok(r) => r
+                .into_string()
+                .map(|s| s.contains("selfshare"))
+                .unwrap_or(false),
+            Err(_) => false,
+        }
+    }
+
     /// 向中心服务器注册本节点。
     pub fn peer_register(
         &self,
