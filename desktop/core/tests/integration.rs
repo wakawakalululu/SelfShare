@@ -50,6 +50,16 @@ fn python_exe() -> String {
     "python".to_string()
 }
 
+
+/// 每个测试用独立临时目录，避免并行执行时互相覆盖。
+fn tmp_dir(tag: &str) -> PathBuf {
+    static SEQ: AtomicUsize = AtomicUsize::new(0);
+    let n = SEQ.fetch_add(1, Ordering::SeqCst);
+    let p = std::env::temp_dir().join(format!("ss-{}-{}-{}", tag, std::process::id(), n));
+    let _ = fs::remove_dir_all(&p);
+    p
+}
+
 fn repo_root() -> PathBuf {
     // desktop/core -> desktop -> 仓库根
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -72,12 +82,7 @@ fn start_server() -> Option<Server> {
     if !script.exists() {
         return None;
     }
-    let seq = SEQ.fetch_add(1, Ordering::SeqCst);
-    let root = std::env::temp_dir().join(format!(
-        "ss-rs-test-{}-{}",
-        std::process::id(),
-        seq
-    ));
+    let root = tmp_dir("rs-test");
     let _ = fs::remove_dir_all(&root);
     fs::create_dir_all(&root).ok()?;
     let token = "rs-test-token".to_string();
@@ -186,8 +191,8 @@ fn rust_client_talks_to_python_server() {
         eprintln!("跳过：python 或 selfshare.py 不可用");
         return;
     };
-    let a = std::env::temp_dir().join(format!("ss-rs-a-{}", std::process::id()));
-    let b = std::env::temp_dir().join(format!("ss-rs-b-{}", std::process::id()));
+    let a = tmp_dir("rs-a");
+    let b = tmp_dir("rs-b");
     let _ = fs::remove_dir_all(&a);
     let _ = fs::remove_dir_all(&b);
 
@@ -210,8 +215,8 @@ fn rust_detects_conflict_and_keeps_both() {
     let Some(server) = start_server() else {
         return;
     };
-    let a = std::env::temp_dir().join(format!("ss-rs-ca-{}", std::process::id()));
-    let b = std::env::temp_dir().join(format!("ss-rs-cb-{}", std::process::id()));
+    let a = tmp_dir("rs-ca");
+    let b = tmp_dir("rs-cb");
     let _ = fs::remove_dir_all(&a);
     let _ = fs::remove_dir_all(&b);
 
@@ -264,8 +269,8 @@ fn rust_propagates_deletes() {
     let Some(server) = start_server() else {
         return;
     };
-    let a = std::env::temp_dir().join(format!("ss-rs-da-{}", std::process::id()));
-    let b = std::env::temp_dir().join(format!("ss-rs-db-{}", std::process::id()));
+    let a = tmp_dir("rs-da");
+    let b = tmp_dir("rs-db");
     let _ = fs::remove_dir_all(&a);
     let _ = fs::remove_dir_all(&b);
 
@@ -289,7 +294,7 @@ fn rust_respects_ignore_rules() {
     let Some(server) = start_server() else {
         return;
     };
-    let a = std::env::temp_dir().join(format!("ss-rs-ia-{}", std::process::id()));
+    let a = tmp_dir("rs-ia");
     let _ = fs::remove_dir_all(&a);
 
     write(&a, ".selfshareignore", "*.tmp\nbuild/\n");
@@ -310,7 +315,7 @@ fn rust_plan_is_side_effect_free() {
     let Some(server) = start_server() else {
         return;
     };
-    let a = std::env::temp_dir().join(format!("ss-rs-pa-{}", std::process::id()));
+    let a = tmp_dir("rs-pa");
     let _ = fs::remove_dir_all(&a);
     write(&a, "x.txt", "x");
 
@@ -371,7 +376,7 @@ fn hmac_matches_python_implementation() {
 #[test]
 fn rust_peer_serves_blob_to_rust_client() {
     let Some(server) = start_server() else { return };
-    let a = std::env::temp_dir().join(format!("ss-rp-a-{}", std::process::id()));
+    let a = tmp_dir("rp-a");
     let _ = fs::remove_dir_all(&a);
 
     // A 上传一个文件
@@ -404,7 +409,7 @@ fn rust_peer_serves_blob_to_rust_client() {
 #[test]
 fn rust_peer_rejects_bad_mac() {
     let Some(server) = start_server() else { return };
-    let a = std::env::temp_dir().join(format!("ss-rp-sec-{}", std::process::id()));
+    let a = tmp_dir("rp-sec");
     let _ = fs::remove_dir_all(&a);
     write(&a, "secret.txt", "classified");
     sync(&server, &a);
