@@ -18,8 +18,10 @@ desktop/app/build/
 desktop/app/.dart_tool/
 desktop/app/.flutter-plugins
 desktop/app/.flutter-plugins-dependencies
-desktop/app/pubspec.lock
-desktop/app/windows/flutter/
+# pubspec.lock 建议入库以保证可复现构建：不忽略
+desktop/app/windows/flutter/ephemeral/
+# 注意：windows/flutter/*.cmake 与 generated_plugin_registrant 必须入库，
+# 否则 CI 上 flutter build 会因为找不到 CMakeLists.txt 直接失败。
 
 # 构建产物
 desktop/app/rust/selfshare_core.dll
