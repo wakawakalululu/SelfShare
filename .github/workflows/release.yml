@@ -61,7 +61,7 @@ jobs:
           Get-ChildItem "$stage\server\selfshare" -Recurse -Include *.pyc | Remove-Item -Force -ErrorAction SilentlyContinue
           Copy-Item deploy "$stage\deploy" -Recurse -Force
 
-          $ver = "${{ github.ref_name }}" -replace '^v',''
+          $ver = "${{ github.event.inputs.tag || github.ref_name }}" -replace '^v',''
           if (-not $ver) { $ver = "dev" }
           Compress-Archive -Path "stage\SelfShare" -DestinationPath "SelfShare-$ver-windows-x64.zip" -Force
           Get-Item "SelfShare-$ver-windows-x64.zip" | Select-Object Name, Length
@@ -69,7 +69,7 @@ jobs:
       - name: Build server bundle (source-only)
         shell: pwsh
         run: |
-          $ver = "${{ github.ref_name }}" -replace '^v',''
+          $ver = "${{ github.event.inputs.tag || github.ref_name }}" -replace '^v',''
           if (-not $ver) { $ver = "dev" }
           $stage = "stage2\selfshare-server-$ver"
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
