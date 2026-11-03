@@ -95,9 +95,12 @@ impl LocalState {
     /// 若该目录之前挂载过（存在 state.json），会保留原有基线快照——重复
     /// 挂载（例如换了服务端地址或令牌）不应该把「上次一致的状态」清空，
     /// 否则所有文件都会被当成新增，删除也会被误判。
-    pub fn init_mount(folder: &Path, config: MountConfig) -> Result<Self, String> {
+    pub fn init_mount(folder: &Path, mut config: MountConfig) -> Result<Self, String> {
         fs::create_dir_all(folder).map_err(|e| format!("创建目录失败：{}", e))?;
         let folder = fs::canonicalize(folder).map_err(|e| format!("目录不可访问：{}", e))?;
+        // Linux 上 /tmp 常是符号链接，canonicalize 后的路径与调用方传入的不同；
+        // 配置里记录规范化后的路径，避免后续比较时对不上。
+        config.folder = folder.to_string_lossy().to_string();
         fs::create_dir_all(Self::dir(&folder)).map_err(|e| format!("创建状态目录失败：{}", e))?;
         let payload = serde_json::to_vec_pretty(&config).map_err(|e| e.to_string())?;
         atomic_write(&Self::config_path(&folder), &payload)
