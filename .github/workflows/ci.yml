@@ -44,6 +44,9 @@ jobs:
       - name: P2P tests
         run: python tests/test_p2p.py -v
 
+      - name: Pairing tests
+        run: python tests/test_pairing.py -v
+
       - name: CLI smoke
         shell: bash
         run: |
