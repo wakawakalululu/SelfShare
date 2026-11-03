@@ -1,0 +1,83 @@
+---
+title: 安装与部署
+---
+
+# 安装与部署
+
+## 环境要求
+
+- Python 3.9+（服务端与 CLI 均只用标准库）
+- 可选：Rust stable（构建桌面 GUI 的同步内核）
+- 可选：Flutter 3.19+（构建桌面 GUI）
+
+## 服务端：Linux systemd
+
+```bash
+sudo bash deploy/systemd/install-server.sh /path/to/SelfShare
+```
+
+脚本会创建不可登录的 `selfshare` 用户，程序安装到 `/opt/selfshare`，数据在 `/var/lib/selfshare`，配置在 `/etc/selfshare/server.env`。
+
+```bash
+systemctl status selfshare-server
+journalctl -u selfshare-server -f
+```
+
+改动监听地址：
+
+```bash
+sudoedit /etc/selfshare/server.env
+sudo systemctl restart selfshare-server
+```
+
+新建同步库：
+
+```bash
+sudo -u selfshare /usr/bin/python3 /opt/selfshare/selfshare.py \
+  vault create work --root /var/lib/selfshare
+```
+
+服务单元启用了 `ProtectSystem=strict`、`ProtectHome=true`、`NoNewPrivileges=true`，只允许写 `/var/lib/selfshare`。
+
+## 客户端：Windows 开机自启
+
+### GUI 托盘模式
+
+```powershell
+powershell -ExecutionPolicy Bypass -File deploy\windows\install-autostart.ps1 `
+  -GuiExe "C:\Program Files\SelfShare\selfshare_desktop.exe" -Force
+```
+
+创建任务 `\SelfShare\GUI`：用户登录后延迟 10 秒、普通权限、`--minimized` 启动到托盘、失败每分钟重试。
+
+### 纯 CLI watch 模式
+
+```powershell
+powershell -ExecutionPolicy Bypass -File deploy\windows\install-autostart.ps1 `
+  -SyncFolder "D:\同步盘" `
+  -PythonwExe "C:\Python312\pythonw.exe" `
+  -SelfSharePy "C:\SelfShare\selfshare.py" -Force
+```
+
+用 `pythonw.exe` 避免登录时弹出命令行窗口。
+
+> 不建议用“系统启动时 + SYSTEM”运行客户端：用户目录、映射盘和凭据在 SYSTEM 会话中往往不可见。客户端应在用户登录时启动，服务端才用系统级服务。
+
+## 客户端：Linux 用户级 watch
+
+```bash
+mkdir -p ~/.config/systemd/user ~/.config/selfshare
+cp deploy/systemd/selfshare-watch@.service ~/.config/systemd/user/
+cp deploy/systemd/watch.env.example ~/.config/selfshare/work.env
+$EDITOR ~/.config/selfshare/work.env
+systemctl --user daemon-reload
+systemctl --user enable --now selfshare-watch@work
+```
+
+## 验证安装
+
+```bash
+selfshare doctor D:\同步盘
+```
+
+会检查配置完整性、目录可写性、服务端连通性和本地状态库。

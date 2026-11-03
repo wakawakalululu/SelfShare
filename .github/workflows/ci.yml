@@ -1,0 +1,162 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+    tags: ['v*']
+  pull_request:
+    branches: [master, main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  PYTHONUNBUFFERED: '1'
+
+jobs:
+  python:
+    name: Python tests (${{ matrix.os }}, py${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.10', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Show version
+        run: python --version
+
+      - name: Byte-compile (syntax gate)
+        run: python -m compileall -q selfshare tests
+
+      - name: Sync tests
+        run: python tests/test_sync.py -v
+
+      - name: P2P tests
+        run: python tests/test_p2p.py -v
+
+      - name: CLI smoke
+        shell: bash
+        run: |
+          python selfshare.py --version
+          python selfshare.py vault list --root "$RUNNER_TEMP/ss-ci" || true
+
+  rust:
+    name: Rust core tests
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/core
+
+      - name: Build
+        working-directory: desktop/core
+        run: cargo build --release
+
+      - name: Test
+        working-directory: desktop/core
+        run: cargo test --release
+
+      # 集成测试会拉起 Python 服务端，确保 runner 上有 python
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Integration tests against Python server
+        working-directory: desktop/core
+        run: cargo test --release --test integration -- --test-threads=1
+
+      - name: Upload core artifact
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: selfshare-core-windows
+          path: desktop/core/target/release/selfshare_core.dll
+          if-no-files-found: error
+
+  gui:
+    name: Windows GUI build
+    runs-on: windows-latest
+    needs: rust
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/core
+
+      - name: Show toolchain
+        run: |
+          flutter --version
+          flutter doctor -v
+
+      - name: Build Rust core
+        working-directory: desktop/core
+        run: cargo build --release
+
+      - name: Flutter pub get
+        working-directory: desktop/app
+        run: flutter pub get
+
+      - name: Analyze
+        working-directory: desktop/app
+        run: flutter analyze
+
+      - name: Build Windows release
+        working-directory: desktop/app
+        run: flutter build windows --release
+
+      - name: Bundle Rust DLL and verify
+        shell: pwsh
+        working-directory: desktop/app
+        run: |
+          $bundle = "build\windows\x64\runner\Release"
+          Copy-Item "..\core\target\release\selfshare_core.dll" $bundle -Force
+          $required = @('selfshare_desktop.exe','flutter_windows.dll','data\app.so','selfshare_core.dll')
+          $missing = $required | Where-Object { -not (Test-Path (Join-Path $bundle $_)) }
+          if ($missing) { throw "bundle incomplete: $($missing -join ', ')" }
+          Get-ChildItem $bundle | Select-Object Name, Length
+
+      - name: Smoke test (process stays alive with a window)
+        shell: pwsh
+        working-directory: desktop/app
+        run: |
+          $bundle = "build\windows\x64\runner\Release"
+          $p = Start-Process -FilePath "$bundle\selfshare_desktop.exe" -WorkingDirectory $bundle -PassThru
+          Start-Sleep -Seconds 10
+          $proc = Get-Process -Id $p.Id -ErrorAction SilentlyContinue
+          if (-not $proc) { throw "GUI exited early" }
+          Write-Host "alive: mem=$([math]::Round($proc.WorkingSet64/1MB,1))MB threads=$($proc.Threads.Count)"
+          if ($proc.MainWindowHandle -eq 0) { throw "no window created" }
+          Write-Host "window title: $($proc.MainWindowTitle)"
+          Stop-Process -Id $p.Id -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: selfshare-desktop-windows-x64
+          path: desktop/app/build/windows/x64/runner/Release/**
+          if-no-files-found: error

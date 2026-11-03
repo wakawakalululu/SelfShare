@@ -1,0 +1,124 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to publish, e.g. v1.2.0'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  windows-bundle:
+    name: Build Windows bundle
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/core
+
+      - name: Build Rust core
+        working-directory: desktop/core
+        run: cargo build --release
+
+      - name: Build GUI
+        working-directory: desktop/app
+        run: |
+          flutter pub get
+          flutter build windows --release
+
+      - name: Assemble portable package
+        shell: pwsh
+        run: |
+          $bundle = "desktop\app\build\windows\x64\runner\Release"
+          Copy-Item "desktop\core\target\release\selfshare_core.dll" $bundle -Force
+
+          # 便携包：解压即用
+          $stage = "stage\SelfShare"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item "$bundle\*" $stage -Recurse -Force
+          Copy-Item README.md, CHANGELOG.md, LICENSE $stage -Force
+          New-Item -ItemType Directory -Force -Path "$stage\server" | Out-Null
+          Copy-Item selfshare.py "$stage\server\" -Force
+          Copy-Item selfshare "$stage\server\selfshare" -Recurse -Force
+          Get-ChildItem "$stage\server\selfshare" -Recurse -Include *.pyc | Remove-Item -Force -ErrorAction SilentlyContinue
+          Copy-Item deploy "$stage\deploy" -Recurse -Force
+
+          $ver = "${{ github.ref_name }}" -replace '^v',''
+          if (-not $ver) { $ver = "dev" }
+          Compress-Archive -Path "stage\SelfShare" -DestinationPath "SelfShare-$ver-windows-x64.zip" -Force
+          Get-Item "SelfShare-$ver-windows-x64.zip" | Select-Object Name, Length
+
+      - name: Build server bundle (source-only)
+        shell: pwsh
+        run: |
+          $ver = "${{ github.ref_name }}" -replace '^v',''
+          if (-not $ver) { $ver = "dev" }
+          $stage = "stage2\selfshare-server-$ver"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item selfshare.py, README.md, CHANGELOG.md, LICENSE, pyproject.toml $stage -Force
+          Copy-Item selfshare "$stage\selfshare" -Recurse -Force
+          Copy-Item deploy "$stage\deploy" -Recurse -Force
+          Get-ChildItem $stage -Recurse -Include *.pyc | Remove-Item -Force -ErrorAction SilentlyContinue
+          Compress-Archive -Path $stage -DestinationPath "selfshare-server-$ver.zip" -Force
+          Get-Item "selfshare-server-$ver.zip" | Select-Object Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: |
+            SelfShare-*-windows-x64.zip
+            selfshare-server-*.zip
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    needs: windows-bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: dist
+
+      - name: Extract release notes from CHANGELOG
+        id: notes
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if [ -z "$TAG" ]; then TAG="${{ github.event.inputs.tag }}"; fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          # 取 CHANGELOG 中该版本小节；找不到则用整份文件
+          awk -v t="${TAG#v}" '
+            $0 ~ "^#+ *v?"t"([^0-9]|$)" {f=1; next}
+            f && /^#+ *v?[0-9]/ {exit}
+            f {print}
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then cp CHANGELOG.md notes.md; fi
+          echo "--- notes ---"; cat notes.md
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.notes.outputs.tag }}
+          name: SelfShare ${{ steps.notes.outputs.tag }}
+          body_path: notes.md
+          files: dist/*.zip
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: true

@@ -2,7 +2,12 @@
 
 自建的跨主机文件夹同步。参考坚果云的「同步文件夹」体验：在一台机器上放一个文件夹，另一台机器挂载同一个同步库，两边看到同一份目录树，改动自动互传，历史版本可回溯，冲突不丢数据。
 
-纯 Python 标准库实现，**零第三方依赖**，服务端和客户端是同一个程序。Windows / Linux / macOS 通用。
+纯 Python 标准库实现，**零第三方依赖**，服务端和客户端是同一个程序。Windows / Linux / macOS 通用，另有 Rust 内核与 Flutter 桌面 GUI。
+
+[![CI](https://github.com/wakawakalululu/SelfShare/actions/workflows/ci.yml/badge.svg)](https://github.com/wakawakalululu/SelfShare/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/wakawakalululu/SelfShare)](https://github.com/wakawakalululu/SelfShare/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-2ea44f)](https://wakawakalululu.github.io/SelfShare/)
 
 ## 它解决什么问题
 

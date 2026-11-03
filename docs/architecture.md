@@ -1,0 +1,88 @@
+---
+title: 架构
+---
+
+# 架构
+
+## 组件
+
+```text
+客户端 A                    中心服务器                    客户端 B
+ 磁盘文件                  blobs/<ab>/<sha256>
+   ↕ 扫描/写入             vault.db（元数据+版本）
+ .selfshare/state.json      peers.json（节点注册表）
+   ↑                           ↑
+   └──── HTTP + P2P ───────────┴──── HTTP + P2P ────┘
+```
+
+## 服务端存储
+
+```text
+<server_root>/
+  server.json                # 同步库注册表 + 令牌摘要
+  vaults/<vault_id>/
+    vault.db                 # sqlite：files / versions / meta
+    blobs/ab/abcdef...       # 原始字节，按 SHA-256 内容寻址
+    peers.json               # 在线节点（易失运行时状态）
+```
+
+- blob 在所有同步库间共享去重
+- `vault.db` 记录每个路径的当前版本与完整修订历史
+- `peers.json` 与持久元数据分离，因为它是易变的运行时状态
+
+## HTTP 协议
+
+| 方法 | 路径 | 作用 |
+| --- | --- | --- |
+| GET | `/api/ping` | 服务存活 |
+| GET | `/api/v/<vault>/stat` | 库统计 |
+| GET | `/api/v/<vault>/manifest?since=` | 增量清单 |
+| POST | `/api/v/<vault>/commit` | 批量提交（含冲突检测） |
+| GET | `/api/v/<vault>/history` | 版本历史 |
+| PUT/GET | `/api/v/<vault>/blob/<sha256>` | 内容传输，支持 Range |
+| GET | `/api/v/<vault>/peers` | 在线节点发现 |
+| POST | `/api/v/<vault>/peer/{register,heartbeat,unregister}` | 节点生命周期 |
+
+## 并发控制
+
+`/commit` 用 `base_hash` 做乐观并发控制：客户端声明它认为的当前内容，服务端比对，不一致则返回 `conflicts` 而不写入。客户端下次同步重新规划。
+
+## 本地状态
+
+挂载目录内的 `.selfshare/`（Windows 下隐藏）：
+
+- `config.json`：服务端地址、库名、令牌、主机标识（权限 0600）
+- `state.json`：base 快照（Rust）或 `state.db`（Python）
+- `sync.lock`：防止同一目录并发同步
+
+## 扫描优化
+
+先用 `(size, mtime)` 快速比对，只有可能变化的文件才算 SHA-256。空闲时不哈希任何文件。
+
+## 安全
+
+- 路径含 `..` 一律拒绝，二次校验规范化后仍在根目录下
+- 令牌加盐 SHA-256 存储，比较用 `hmac.compare_digest`
+- `vault rotate` 可吊销旧令牌
+- P2P 用 HMAC 认证，token 不上网
+
+## 代码结构
+
+```text
+selfshare/
+  util.py      哈希、原子写入、路径规范化、忽略规则
+  store.py     内容寻址存储 + SQLite 元数据与历史
+  server.py    HTTP 服务
+  client.py    HTTP 传输 + P2P 拉取
+  sync.py      三方合并引擎
+  p2p.py       节点注册表 + HMAC
+  peer.py      P2P 节点服务
+  watch.py     轮询监视器
+  config.py    挂载配置
+  cli.py       命令行
+
+desktop/
+  core/        Rust 内核（client / engine / state / peer / ffi / watcher）
+  app/         Flutter GUI
+  scripts/     构建脚本
+```

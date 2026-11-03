@@ -1,0 +1,74 @@
+---
+title: 桌面 GUI
+---
+
+# 桌面 GUI
+
+Flutter 前端 + Rust 同步内核，通过 `dart:ffi` 调用 17 个稳定 C ABI。
+
+```text
+Flutter UI（多挂载 / 进度 / 托盘 / 历史 / 开机自启）
+        │ dart:ffi
+        ▼
+Rust Core（扫描 / SHA-256 / 三方合并 / 冲突副本 / watch / HTTP / P2P）
+        │ 复用既有协议
+        ▼
+Python SelfShare Server
+```
+
+## 功能
+
+- 添加多个同步文件夹
+- 立即同步 / 预演同步
+- 自动 watch、实时进度、托盘常驻
+- 关闭窗口隐藏到托盘，退出时停止后台线程
+- 拉取/上传/删除/冲突统计
+- 服务端文件数、容量、版本数、修订号
+- 版本历史浏览与一键恢复
+- Windows 登录自启开关
+- P2P 直连开关
+
+## 构建
+
+要求 Flutter 3.19+、Rust stable。
+
+```powershell
+powershell -ExecutionPolicy Bypass -File desktop\scripts\build_windows.ps1
+```
+
+脚本会依次：构建 Rust DLL → `flutter pub get` → `flutter analyze` → `flutter build windows` → 汇总可运行目录。
+
+只构建内核：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File desktop\scripts\build_windows.ps1 -SkipFlutter
+```
+
+## 产物
+
+```text
+desktop\app\build\windows\x64\runner\Release\
+  selfshare_desktop.exe      1.7 MB
+  selfshare_core.dll         2.7 MB
+  flutter_windows.dll
+  data\app.so                5.7 MB
+  data\icudtl.dat
+```
+
+## 构建环境提示
+
+`flutter build` 报 `No CMAKE_CXX_COMPILER` 说明当前会话缺少 MSVC/SDK 环境。`build_windows.ps1` 会自动探测 `VC\Tools\MSVC` 与 `Windows Kits\10\Include` 并注入 `INCLUDE`/`LIB`/`PATH`，不需要手工开 vcvars 窗口。
+
+若报缺 `kernel32.lib` 或 `rc.exe`，说明 Windows SDK 未安装，需要补装。
+
+## C ABI
+
+头文件：`desktop/core/include/selfshare_core.h`。所有返回值为 UTF-8 JSON，必须用 `ss_free` 释放。
+
+| 分组 | 函数 |
+| --- | --- |
+| 生命周期 | `ss_init` `ss_shutdown` `ss_version` |
+| 挂载 | `ss_mount` `ss_unmount` `ss_mount_info` |
+| 同步 | `ss_sync` `ss_plan` `ss_progress` |
+| watch | `ss_watch_start` `ss_watch_stop` `ss_watch_status` |
+| 历史 | `ss_history` `ss_restore` `ss_remote_stat` |

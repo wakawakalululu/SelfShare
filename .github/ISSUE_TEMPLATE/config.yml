@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安装与故障排查
+    url: https://github.com/wakawakalululu/SelfShare/wiki/常见问题
+    about: 同步没反应、令牌错误、开机自启失效等常见问题
+  - name: 文档
+    url: https://wakawakalululu.github.io/SelfShare/
+    about: 安装、P2P、冲突处理、架构说明

@@ -1,0 +1,11 @@
+title: SelfShare
+description: 自建的跨主机文件夹同步 —— 冲突保留双方，中心认证 + P2P 直连
+theme: jekyll-theme-primer
+markdown: kramdown
+plugins:
+  - jekyll-relative-links
+  - jekyll-seo-tag
+relative_links:
+  enabled: true
+  collections: false
+show_downloads: false
