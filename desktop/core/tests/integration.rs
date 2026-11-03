@@ -33,6 +33,23 @@ impl Drop for Server {
     }
 }
 
+/// 找可用的 Python 解释器：Linux 上通常只有 `python3`。
+fn python_exe() -> String {
+    for cand in ["python3", "python"] {
+        if Command::new(cand)
+            .arg("--version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+        {
+            return cand.to_string();
+        }
+    }
+    "python".to_string()
+}
+
 fn repo_root() -> PathBuf {
     // desktop/core -> desktop -> 仓库根
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -67,7 +84,8 @@ fn start_server() -> Option<Server> {
     let vault = "v1".to_string();
 
     // 先建库
-    let create = Command::new("python")
+    let py = python_exe();
+    let create = Command::new(&py)
         .arg(&script)
         .args([
             "vault",
@@ -87,7 +105,7 @@ fn start_server() -> Option<Server> {
     }
 
     let port = free_port();
-    let child = Command::new("python")
+    let child = Command::new(&py)
         .arg(&script)
         .args([
             "server",
