@@ -108,6 +108,37 @@ def cmd_vault(args: argparse.Namespace) -> int:
             meta = reg.data["vaults"][vid]
             print("%-20s %-20s %s" % (vid, meta.get("created", "-"), meta.get("note", "")))
         return 0
+    if args.action == "pair-code":
+        if not args.vault_id:
+            print(bad("需要指定同步库名"))
+            return 1
+        if not reg.exists(args.vault_id):
+            print(bad("没有这个同步库: %s" % args.vault_id))
+            return 1
+        vault = reg.open_vault(args.vault_id)
+        try:
+            from .pairing import PairCodeStore
+
+            store = PairCodeStore(vault.path)
+            info = store.issue(args.vault_id, ttl=args.ttl, note=args.note)
+        finally:
+            vault.close()
+        host = _lan_ip()
+        print(ok("配对码已生成"))
+        print()
+        print("     " + _c(info["code"], "1;36"))
+        print()
+        print("  有效期至: %s（%d 分钟）" % (info["expires_at"], info["expires_in"] // 60))
+        print("  服务端  : http://%s:%d" % (host, args.port))
+        print("  同步库  : %s" % args.vault_id)
+        print()
+        print(dim("  在另一台设备上运行："))
+        print(dim('    selfshare pair "D:\同步盘" --url http://%s:%d --code %s'
+                  % (host, args.port, info["code"])))
+        print(dim("  或在桌面端选择「输入配对码」并粘贴上面这串。"))
+        print()
+        print(warn("  该码一次性有效，用后作废。"))
+        return 0
     if args.action == "rotate":
         try:
             info = reg.rotate_token(args.vault_id)
@@ -199,6 +230,67 @@ def cmd_mount(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_pair(args: argparse.Namespace) -> int:
+    """傻瓜式挂载：只需服务端地址 + 配对码。"""
+    folder = os.path.abspath(args.folder)
+    url = args.url.rstrip("/")
+    if not url.startswith(("http://", "https://")):
+        url = "http://" + url
+
+    print("正在连接 %s …" % url)
+    if not Client.probe(url):
+        print(bad("这个地址不是 SelfShare 服务端"))
+        print(dim("  确认服务端已启动，且地址形如 http://192.168.1.10:8484"))
+        return 1
+
+    print("正在使用配对码 …")
+    try:
+        info = Client.pair(url, args.code)
+    except RemoteError as exc:
+        print(bad(str(exc)))
+        print(dim("  配对码一次性且默认 30 分钟过期；请在服务端重新生成。"))
+        return 1
+
+    token = info["token"]
+    vault = info["vault"]
+    client = Client(url, vault, token, timeout=args.timeout)
+    try:
+        stats = client.stat()
+    except RemoteError as exc:
+        print(bad("连接成功但读取同步库失败：%s" % exc))
+        return 1
+
+    from .config import register_mount, write_config
+
+    os.makedirs(folder, exist_ok=True)
+    write_config(folder, {
+        "url": url,
+        "vault": vault,
+        "token": token,
+        "folder": folder,
+        "mount_id": vault,
+        "created": now_iso(),
+        "timeout": args.timeout,
+    })
+    hide_path(os.path.join(folder, ".selfshare"))
+    register_mount(folder)
+
+    print(ok("已连接"))
+    print("  本地文件夹: %s" % folder)
+    print("  同步库    : %s（远端 %d 个文件，%s）"
+          % (vault, stats["files"], human_size(stats["bytes"])))
+    print()
+    print("  正在拉取远端内容 …")
+    with Syncer(folder, client) as syncer:
+        report = syncer.sync()
+    _print_report(report)
+    print()
+    print(ok("完成。之后运行下面任意一条即可自动同步："))
+    print("  selfshare watch \"%s\"" % folder)
+    print(dim("  桌面端：双击启动 SelfShare，选择该文件夹即可。"))
+    return 0
+
+
 def cmd_umount(args: argparse.Namespace) -> int:
     folder = resolve_folder(args.folder)
     if not os.path.exists(os.path.join(folder, STATE_DIR, "config.json")):
@@ -210,6 +302,18 @@ def cmd_umount(args: argparse.Namespace) -> int:
     print(ok("已卸载: %s" % folder))
     print(dim("  本地文件保留；重新 mount 可继续同步。"))
     return 0
+
+
+def _lan_ip() -> str:
+    """取本机对外 IP，用于打印可直接复制的地址。"""
+    import socket
+
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect(("8.8.8.8", 80))
+            return sock.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
 
 
 def _print_report(report: SyncReport) -> None:
@@ -527,11 +631,14 @@ def build_parser() -> argparse.ArgumentParser:
     sp.set_defaults(func=cmd_server)
 
     sp = sub.add_parser("vault", help="管理同步库")
-    sp.add_argument("action", choices=["create", "list", "info", "rotate", "remove"])
+    sp.add_argument("action",
+                    choices=["create", "list", "info", "rotate", "remove", "pair-code"])
     sp.add_argument("vault_id", nargs="?", help="同步库名")
     sp.add_argument("--root", default=os.path.join(os.getcwd(), "selfshare-data"))
     sp.add_argument("--token", help="指定令牌（默认随机生成）")
     sp.add_argument("--note", default="", help="备注")
+    sp.add_argument("--ttl", type=float, default=1800.0, help="配对码有效期（秒）")
+    sp.add_argument("--port", type=int, default=8484, help="服务端端口，用于生成提示")
     sp.add_argument("--yes", action="store_true")
     sp.set_defaults(func=cmd_vault)
 
@@ -543,6 +650,13 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--timeout", type=float, default=60.0)
     sp.add_argument("--force", action="store_true", help="覆盖已有挂载配置")
     sp.set_defaults(func=cmd_mount)
+
+    sp = sub.add_parser("pair", help="用配对码连接（一条命令完成挂载）")
+    sp.add_argument("folder", help="本地文件夹，不存在会自动创建")
+    sp.add_argument("--url", required=True, help="服务端地址")
+    sp.add_argument("--code", required=True, help="服务端生成的配对码")
+    sp.add_argument("--timeout", type=float, default=60.0)
+    sp.set_defaults(func=cmd_pair)
 
     sp = sub.add_parser("umount", help="卸载本地挂载（不删文件）")
     sp.add_argument("folder", nargs="?")
