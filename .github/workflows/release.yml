@@ -30,15 +30,19 @@ jobs:
         with:
           workspaces: desktop/core
 
-      - name: Build Rust core
-        working-directory: desktop/core
-        run: cargo build --release
+      # 复用仓库脚本：自动探测 MSVC/SDK、构建 Rust、分析并打包
+      - name: Build everything (Rust core + Flutter GUI)
+        shell: pwsh
+        run: ./desktop/scripts/build_windows.ps1 -Configuration Release
 
-      - name: Build GUI
-        working-directory: desktop/app
+      - name: Show build log on failure
+        if: failure()
+        shell: pwsh
         run: |
-          flutter pub get
-          flutter build windows --release
+          Write-Host "--- flutter doctor ---"
+          flutter doctor -v
+          Write-Host "--- bundle ---"
+          Get-ChildItem "desktop/app/build/windows/x64/runner/Release" -ErrorAction SilentlyContinue
 
       - name: Assemble portable package
         shell: pwsh
