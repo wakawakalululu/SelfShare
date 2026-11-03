@@ -97,6 +97,39 @@ class AppState extends ChangeNotifier {
     );
   }
 
+  /// 配对码一键挂载：换令牌、写配置、首次同步，成功后自动常驻同步。
+  Future<bool> pairMount({
+    required String folder,
+    required String url,
+    required String code,
+  }) async {
+    loading = true;
+    error = null;
+    status = '正在连接…';
+    notifyListeners();
+    try {
+      final result = await bridge.pair(folder: folder, url: url, code: code);
+      final view = MountView.fromJson(bridge.mountInfo(folder));
+      mounts.removeWhere((e) => e.folder == view.folder);
+      mounts.add(view);
+      selectedIndex = mounts.length - 1;
+      await _persistMounts();
+      final warning = result['warning']?.toString();
+      status = warning ?? '已连接 · ${result['summary'] ?? ''}';
+      if (warning != null) error = warning;
+      await refreshSelected(quiet: true);
+      startWatch();
+      return true;
+    } catch (e) {
+      error = e.toString();
+      status = '连接失败';
+      return false;
+    } finally {
+      loading = false;
+      notifyListeners();
+    }
+  }
+
   Future<void> addMount({
     required String folder,
     required String url,
