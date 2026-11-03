@@ -58,13 +58,16 @@ class Handler(BaseHTTPRequestHandler):
             "[%s] %s %s\n" % (now_iso(), self.address_string(), fmt % args)
         )
 
-    def _send_json(self, code: int, obj: Any) -> None:
+    def _send_json(self, code: int, obj: Any, body: bool = True) -> None:
         payload = json.dumps(obj, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
-        self.wfile.write(payload)
+        # HEAD 响应不得带 body，否则 keep-alive 连接会被污染，
+        # 后续请求读到残留字节并报 "HTTP version did not start with HTTP/"。
+        if body and self.command != "HEAD":
+            self.wfile.write(payload)
 
     def _send_error_json(self, code: int, message: str) -> None:
         self._send_json(code, {"error": message})
