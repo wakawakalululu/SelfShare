@@ -1,0 +1,30 @@
+[Unit]
+Description=SelfShare sync server (Go)
+Documentation=https://github.com/wakawakalululu/SelfShare
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# 专用低权限用户；先创建： useradd --system --home /var/lib/selfshare --shell /usr/sbin/nologin selfshare
+User=selfshare
+Group=selfshare
+
+ExecStart=/usr/local/bin/selfshare-server --root /var/lib/selfshare --host 0.0.0.0 --port 8484
+
+Restart=on-failure
+RestartSec=2s
+
+# 只暴露数据目录，其余按最小权限收紧。
+StateDirectory=selfshare
+StateDirectoryMode=0700
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+# 大文件上传可能较慢，放宽硬超时避免 systemd 过早杀进程。
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

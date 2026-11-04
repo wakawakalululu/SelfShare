@@ -1,0 +1,24 @@
+services:
+  selfshare-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: selfshare-server:2
+    container_name: selfshare-server
+    ports:
+      - "${SELFSHARE_PORT:-8484}:8484"
+    volumes:
+      - selfshare-data:/data
+    # server-go 通过命令行参数配置，不读环境变量。
+    command: ["--root", "/data", "--host", "0.0.0.0", "--port", "8484"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8484/api/ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  selfshare-data:
+    driver: local
