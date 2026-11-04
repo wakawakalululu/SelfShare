@@ -1,0 +1,56 @@
+{
+  "productName": "SelfShare",
+  "version": "2.0.0",
+  "identifier": "com.selfshare.client",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "title": "SelfShare",
+        "width": 1024,
+        "height": 720,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true,
+        "minWidth": 800,
+        "minHeight": 600,
+        "decorations": true,
+        "visible": true
+      }
+    ],
+    "security": {
+      "csp": null
+    },
+    "trayIcon": {
+      "iconPath": "icons/icon.png",
+      "iconAsTemplate": true,
+      "tooltip": "SelfShare - 文件同步"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": ""
+    }
+  },
+  "plugins": {
+    "shell": {
+      "open": true
+    }
+  }
+}

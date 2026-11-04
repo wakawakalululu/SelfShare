@@ -1,0 +1,44 @@
+[package]
+name = "selfshare-client"
+version = "2.0.0"
+edition = "2021"
+description = "SelfShare Desktop Client"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-shell = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-notification = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+hex = "0.4"
+# 引导端点（/api/ping、/api/pair）也要能连 HTTPS 服务端。
+ureq = { version = "2", features = ["json", "tls"] }
+chrono = { version = "0.4", features = ["serde"] }
+notify = "6"
+tokio = { version = "1", features = ["full"] }
+thiserror = "1"
+log = "0.4"
+env_logger = "0.11"
+dirs = "5"
+open = "5"
+# 复用已验证的同步内核（三方合并、冲突副本、原子写、后台监视线程）；
+# 启用 tls 后可直连 Go 服务端的 --cert/--key HTTPS 模式。
+selfshare-core = { path = "../../../desktop/core", features = ["tls"] }
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
+[lib]
+name = "selfshare_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[[bin]]
+name = "selfshare-client"
+path = "src/main.rs"
