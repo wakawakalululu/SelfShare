@@ -139,6 +139,44 @@ def cmd_vault(args: argparse.Namespace) -> int:
         print()
         print(warn("  该码一次性有效，用后作废。"))
         return 0
+    if args.action == "codes":
+        if not args.vault_id:
+            print(bad("需要指定同步库名"))
+            return 1
+        if not reg.exists(args.vault_id):
+            print(bad("没有这个同步库: %s" % args.vault_id))
+            return 1
+        vault = reg.open_vault(args.vault_id)
+        try:
+            from .pairing import PairCodeStore
+
+            active = PairCodeStore(vault.path).list_active(args.vault_id)
+        finally:
+            vault.close()
+        if not active:
+            print("没有未使用的配对码")
+            return 0
+        print("%-22s %-10s %s" % ("配对码", "剩余秒", "备注"))
+        for item in active:
+            print("%-22s %-10s %s" % (item["code"], item["expires_in"], item.get("note", "")))
+        return 0
+    if args.action == "revoke":
+        if not args.vault_id:
+            print(bad("需要指定同步库名"))
+            return 1
+        if not reg.exists(args.vault_id):
+            print(bad("没有这个同步库: %s" % args.vault_id))
+            return 1
+        vault = reg.open_vault(args.vault_id)
+        try:
+            from .pairing import PairCodeStore
+
+            removed = PairCodeStore(vault.path).revoke_all(args.vault_id)
+        finally:
+            vault.close()
+        print(ok("已吊销 %s 的 %d 个配对码" % (args.vault_id, removed)))
+        print(dim("  已兑换的令牌不受影响；要作废令牌请用 vault rotate。"))
+        return 0
     if args.action == "rotate":
         try:
             info = reg.rotate_token(args.vault_id)
@@ -390,7 +428,8 @@ def cmd_watch(args: argparse.Namespace) -> int:
     from .watch import Watcher
 
     watcher = Watcher(factory, folder, interval=args.interval,
-                      debounce=args.debounce, log=log)
+                      debounce=args.debounce, log=log,
+                      post_sync=(peer.refresh if peer else None))
     try:
         watcher.run_forever(sync_interval=args.full_interval)
     except KeyboardInterrupt:
@@ -632,7 +671,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("vault", help="管理同步库")
     sp.add_argument("action",
-                    choices=["create", "list", "info", "rotate", "remove", "pair-code"])
+                    choices=["create", "list", "info", "rotate", "remove", "pair-code",
+                             "codes", "revoke"])
     sp.add_argument("vault_id", nargs="?", help="同步库名")
     sp.add_argument("--root", default=os.path.join(os.getcwd(), "selfshare-data"))
     sp.add_argument("--token", help="指定令牌（默认随机生成）")

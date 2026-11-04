@@ -24,6 +24,8 @@ class Client:
         self.vault_id = vault_id
         self.token = token
         self.timeout = timeout
+        # 旧服务端没有 /blobbulk；首次遇到 404 后退化为逐个 PUT
+        self.bulk_supported = True
 
     # ------------------------------------------------------------------ url ---
     def _url(self, action: str, tail: str = "") -> str:
@@ -118,6 +120,18 @@ class Client:
             headers={"Content-Type": "application/octet-stream"},
             timeout=max(120.0, self.timeout),
         )
+
+    def put_blobs_bulk(self, items) -> Dict[str, Any]:
+        """一次提交多个小 blob，items 为 [(digest, bytes), ...]。
+
+        小文件同步的瓶颈是请求数：上千个 1 KB 文件逐个 PUT 要几十秒。
+        """
+        import base64
+
+        payload = {"blobs": [{"hash": digest,
+                              "data": base64.b64encode(data).decode("ascii")}
+                             for digest, data in items]}
+        return self._json("POST", "blobbulk", payload)
 
     def put_blob_file(self, digest: str, path: str) -> None:
         """Stream a file to the server without loading it into memory."""
@@ -221,8 +235,11 @@ class Client:
             return False
 
     # ---------------------------------------------------------------- p2p ---
-    def peers(self, exclude_peer_id: Optional[str] = None) -> list:
+    def peers(self, exclude_peer_id: Optional[str] = None,
+              with_blobs: bool = False) -> list:
         query = "exclude=" + exclude_peer_id if exclude_peer_id else ""
+        if with_blobs:
+            query += ("&" if query else "") + "with_blobs=1"
         data = self._json("GET", "peers", query=query)
         return data.get("peers", [])
 
@@ -233,10 +250,12 @@ class Client:
             "host_id": host_id, "version": version,
         })
 
-    def peer_heartbeat(self, peer_id: str, blob_count: int) -> dict:
-        return self._json("POST", "peer/heartbeat", {
-            "peer_id": peer_id, "blob_count": blob_count,
-        })
+    def peer_heartbeat(self, peer_id: str, blob_count: int,
+                       blobs: Optional[list] = None) -> dict:
+        payload: Dict[str, Any] = {"peer_id": peer_id, "blob_count": blob_count}
+        if blobs is not None:
+            payload["blobs"] = blobs
+        return self._json("POST", "peer/heartbeat", payload)
 
     def peer_unregister(self, peer_id: str) -> dict:
         return self._json("POST", "peer/unregister", {"peer_id": peer_id})
@@ -263,6 +282,13 @@ class Client:
                         break
                     out.write(block)
             os.replace(tmp, dest_path)
+        except urllib.error.HTTPError as exc:
+            # 保留状态码：401 是认证失败，不能和"节点不可达"混为一谈，
+            # 否则 token 配错会被当成掉线而静默回退到中心服务器
+            _silent_remove(tmp)
+            raise RemoteError("peer %s returned %d: %s"
+                              % (peer_listen, exc.code, exc.reason),
+                              status=exc.code) from None
         except urllib.error.URLError as exc:
             _silent_remove(tmp)
             raise RemoteError("peer %s unreachable: %s" % (peer_listen, exc.reason)) from None
@@ -276,7 +302,10 @@ class Client:
 
         返回实际来源："peer:<listen>" 或 "server"。
         """
-        peers = self.peers(exclude_peer_id=exclude_peer_id)
+        peers = self.peers(exclude_peer_id=exclude_peer_id, with_blobs=True)
+        # 优先试声明持有该 blob 的节点；不上报列表的节点（如 Rust）仍会作为兜底被尝试
+        advertised = {p["peer_id"] for p in peers if digest in (p.get("blobs") or [])}
+        peers.sort(key=lambda p: p["peer_id"] not in advertised)
         for peer in peers:
             try:
                 self.get_blob_p2p(digest, dest_path, peer["listen"], peer["peer_id"])

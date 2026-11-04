@@ -23,12 +23,14 @@ class Watcher:
 
     def __init__(self, syncer_factory: Callable[[], object], folder: str,
                  interval: float = POLL_INTERVAL, debounce: float = DEBOUNCE,
-                 log: Optional[Callable[[str], None]] = None):
+                 log: Optional[Callable[[str], None]] = None,
+                 post_sync: Optional[Callable[[], None]] = None):
         self.syncer_factory = syncer_factory
         self.folder = folder
         self.interval = interval
         self.debounce = debounce
         self._log = log or (lambda m: None)
+        self._post_sync = post_sync
         self._stop = threading.Event()
         self._last_snapshot: Optional[dict] = None
         self._pending_since: Optional[float] = None
@@ -84,6 +86,11 @@ class Watcher:
                 self._log("  * 冲突已保留副本: %s" % rel)
             # refresh snapshot after sync so our own writes don't retrigger
             self._last_snapshot = self._snapshot()
+            if self._post_sync:
+                try:
+                    self._post_sync()
+                except Exception as exc:
+                    self._log("  peer 广播刷新失败: %s" % exc)
             return True
         except Exception as exc:
             self._log("同步失败: %s" % exc)

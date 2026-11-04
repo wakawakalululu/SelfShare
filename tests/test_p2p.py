@@ -33,6 +33,15 @@ def _free_port() -> int:
 
 class P2PServerFixture:
     def __init__(self):
+        self.ext = None
+        if os.environ.get("SELFSHARE_SERVER_BIN"):
+            from external_server import ExternalServer
+
+            self.ext = ExternalServer("p2p", "tok-p2p")
+            self.ext.create_vault()
+            self.root = self.ext.root
+            self.url = self.ext.url
+            return
         self.root = tempfile.mkdtemp(prefix="selfshare-p2p-server-")
         self.registry = Registry(self.root)
         self.registry.create_vault("p2p", token="tok-p2p")
@@ -46,6 +55,9 @@ class P2PServerFixture:
         return Client(self.url, "p2p", "tok-p2p", timeout=15)
 
     def stop(self):
+        if self.ext is not None:
+            self.ext.stop()
+            return
         self.server.shutdown()
         self.server.server_close()
         shutil.rmtree(self.root, ignore_errors=True)
@@ -137,6 +149,67 @@ class P2PTestCase(unittest.TestCase):
                 req = urllib.request.Request(url, headers={"X-P2P-MAC": bad})
                 with self.assertRaises(Exception):
                     urllib.request.urlopen(req, timeout=5)
+            finally:
+                node.stop()
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+
+
+class BlobAdvertisementTestCase(unittest.TestCase):
+    """节点启动之后同步到的新 blob 也要重新广播，并且默认发现响应保持精简。"""
+
+    def setUp(self):
+        self.fx = P2PServerFixture()
+
+    def tearDown(self):
+        self.fx.stop()
+
+    def test_blobs_readvertised_after_refresh(self):
+        folder = tempfile.mkdtemp(prefix="selfshare-p2p-adv-")
+        try:
+            from selfshare.sync import Syncer
+
+            node = PeerNode(folder, self.fx.client(), quiet=True)
+            node.start()
+            time.sleep(0.2)
+
+            with Syncer(folder, self.fx.client()) as s:
+                with open(os.path.join(folder, "late.txt"), "w", encoding="utf-8") as fh:
+                    fh.write("created after the peer started\n")
+                s.sync()
+            digest = sha256_file(os.path.join(folder, "late.txt"))
+
+            node.refresh()
+            holders = [p for p in self.fx.client().peers(with_blobs=True)
+                       if digest in (p.get("blobs") or [])]
+            self.assertEqual(len(holders), 1)
+            self.assertNotIn("blobs", self.fx.client().peers()[0])
+            node.stop()
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+
+    def test_peer_auth_failure_reports_status_not_unreachable(self):
+        # 401 被当成"节点不可达"时，token 配错会被回退逻辑静默掩盖
+        folder = tempfile.mkdtemp(prefix="selfshare-p2p-auth-")
+        try:
+            from selfshare.sync import Syncer
+
+            with Syncer(folder, self.fx.client()) as s:
+                with open(os.path.join(folder, "secret.txt"), "w", encoding="utf-8") as fh:
+                    fh.write("needs the right token\n")
+                s.sync()
+            digest = sha256_file(os.path.join(folder, "secret.txt"))
+
+            node = PeerNode(folder, self.fx.client(), quiet=True)
+            listen = node.start()
+            time.sleep(0.2)
+            try:
+                bad = Client(self.fx.url, "p2p", "wrong-token", timeout=10)
+                dest = os.path.join(folder, "out.bin")
+                with self.assertRaises(RemoteError) as ctx:
+                    bad.get_blob_p2p(digest, dest, listen, node.peer_id)
+                self.assertEqual(ctx.exception.status, 401)
+                self.assertNotIn("unreachable", str(ctx.exception))
             finally:
                 node.stop()
         finally:

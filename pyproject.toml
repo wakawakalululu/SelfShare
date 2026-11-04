@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "selfshare"
-version = "1.0.0"
+version = "1.3.0"
 description = "跨主机文件夹同步：自建服务端 + 本地挂载目录，参考坚果云的同步文件夹体验"
 readme = "README.md"
 requires-python = ">=3.9"

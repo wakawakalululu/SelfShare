@@ -206,24 +206,33 @@ class PeerNode:
                     out.append(entry.hash)
         return out
 
-    def _register(self) -> None:
+    def _register(self, silent: bool = False) -> None:
         from .sync import LocalState as _LS
         st = _LS(self.folder)
         try:
             host_id = st.host_id
         finally:
             st.close()
+        blobs = self._local_blobs()
         self.client.peer_register(
-            self.peer_id, self.listen, self._local_blobs(), host_id
+            self.peer_id, self.listen, blobs, host_id
         )
-        if not self.quiet:
+        if not self.quiet and not silent:
             print("[peer] registered as %s at %s (%d blobs)"
-                  % (self.peer_id, self.listen, len(self._local_blobs())), flush=True)
+                  % (self.peer_id, self.listen, len(blobs)), flush=True)
+
+    def refresh(self) -> None:
+        # 不重新广播的话，对端只能发现本节点启动前就持有的 blob
+        try:
+            self._register(silent=True)
+        except RemoteError:
+            pass
 
     def _heartbeat_loop(self) -> None:
         while not self._stop.wait(HEARTBEAT):
             try:
-                self.client.peer_heartbeat(self.peer_id, len(self._local_blobs()))
+                blobs = self._local_blobs()
+                self.client.peer_heartbeat(self.peer_id, len(blobs), blobs)
             except RemoteError:
                 pass
 

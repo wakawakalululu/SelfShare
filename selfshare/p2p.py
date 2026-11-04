@@ -25,6 +25,7 @@ from .util import atomic_write_bytes, load_json
 
 PEER_FILE = "peers.json"
 PEER_TTL = 300.0          # 秒，超过即视为离线
+BLOBS_DISCOVER_LIMIT = 20000  # with_blobs 时单个节点最多回报多少条哈希
 HEARTBEAT = 30.0          # 客户端建议的心跳间隔
 
 
@@ -71,7 +72,8 @@ class PeerRegistry:
         self._save(data)
         return {"peer_id": peer_id, "vault": vault_id, "registered": True, "ttl": PEER_TTL}
 
-    def heartbeat(self, vault_id: str, peer_id: str, blob_count: int) -> Dict[str, Any]:
+    def heartbeat(self, vault_id: str, peer_id: str, blob_count: int,
+                  blobs: Optional[List[str]] = None) -> Dict[str, Any]:
         data = self._load()
         now = time.time()
         found = None
@@ -79,6 +81,8 @@ class PeerRegistry:
             if p["peer_id"] == peer_id and p["vault"] == vault_id:
                 p["last_seen"] = now
                 p["blob_count"] = blob_count
+                if blobs is not None:
+                    p["blobs"] = blobs[:50000]
                 found = p
         if found:
             self._save(data)
@@ -92,7 +96,8 @@ class PeerRegistry:
         self._save(data)
         return {"ok": True}
 
-    def discover(self, vault_id: str, exclude_peer_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    def discover(self, vault_id: str, exclude_peer_id: Optional[str] = None,
+                 with_blobs: bool = False) -> List[Dict[str, Any]]:
         data = self._load()
         now = time.time()
         out = []
@@ -103,14 +108,18 @@ class PeerRegistry:
                 continue
             if exclude_peer_id and p["peer_id"] == exclude_peer_id:
                 continue
-            out.append({
+            entry = {
                 "peer_id": p["peer_id"],
                 "listen": p["listen"],
                 "blob_count": p["blob_count"],
                 "host_id": p["host_id"],
                 "version": p["version"],
                 "last_seen": p["last_seen"],
-            })
+            }
+            # 哈希列表按需下发：默认保持小负载，需要精确选节点的客户端自己带 with_blobs
+            if with_blobs:
+                entry["blobs"] = p.get("blobs", [])[:BLOBS_DISCOVER_LIMIT]
+            out.append(entry)
         out.sort(key=lambda p: -p["last_seen"])
         return out
 

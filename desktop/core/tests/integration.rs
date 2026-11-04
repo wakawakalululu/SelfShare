@@ -361,7 +361,8 @@ fn ffi_surface_roundtrips() {
 
 #[test]
 fn hmac_matches_python_implementation() {
-    // 与 Python `make_p2p_hmac` 使用同样的输入，验证两端口径一致。
+    use std::io::Write;
+
     let mac = selfshare_core::peer::hmac_hex("tok", "vault:peer1", "abcd", "n1");
     assert_eq!(mac.len(), 64);
     assert!(mac.chars().all(|c| c.is_ascii_hexdigit()));
@@ -371,6 +372,74 @@ fn hmac_matches_python_implementation() {
     // 任一字段变化都必须改变结果
     assert_ne!(mac, selfshare_core::peer::hmac_hex("tok2", "vault:peer1", "abcd", "n1"));
     assert_ne!(mac, selfshare_core::peer::hmac_hex("tok", "vault:peer1", "abce", "n1"));
+
+    // 逐字节一致性必须拿 Python 的实现来比，只比 Rust 自己证明不了跨实现互通
+    let cases = [
+        ("tok", "vault:peer1", "abcd", "n1"),
+        ("tok2", "vault:peer1", "abcd", "n1"),
+        ("tok", "vault:peer1", "abce", "n1"),
+        ("", "v:1", &"0".repeat(64), "nonce with spaces"),
+        ("s3cr3t", "myvault:peer-9", "deadbeef", "cafe"),
+        ("tok", "vault:peer1", "abcd", ""),
+    ];
+
+    let snippet = r#"
+import sys
+from selfshare.p2p import make_p2p_hmac
+for line in sys.stdin:
+    line = line.rstrip("\n")
+    if not line:
+        continue
+    token, peer, digest, nonce = line.split("\t")
+    print(make_p2p_hmac(token, peer, digest, nonce))
+"#;
+
+    let mut child = match Command::new(python_exe())
+        .arg("-c")
+        .arg(snippet)
+        .current_dir(repo_root())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(_) => {
+            eprintln!("跳过：python 不可用，无法做跨实现 HMAC 对比");
+            return;
+        }
+    };
+
+    {
+        let stdin = child.stdin.as_mut().expect("stdin");
+        for (token, peer, digest, nonce) in cases {
+            writeln!(stdin, "{token}\t{peer}\t{digest}\t{nonce}").unwrap();
+        }
+    }
+
+    let out = child.wait_with_output().expect("等待 python 结束");
+    if !out.status.success() {
+        eprintln!("跳过：python 计算 HMAC 失败");
+        return;
+    }
+    let lines: Vec<String> = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(|s| s.trim().to_string())
+        .collect();
+    assert_eq!(
+        lines.len(),
+        cases.len(),
+        "python 返回的行数与输入不一致"
+    );
+    for (idx, (token, peer, digest, nonce)) in cases.iter().enumerate() {
+        assert_eq!(
+            lines[idx],
+            selfshare_core::peer::hmac_hex(token, peer, digest, nonce),
+            "第 {} 组输入的 HMAC 两端不一致",
+            idx + 1
+        );
+    }
+    println!("HMAC 跨实现比对完成：{} 组输入与 python make_p2p_hmac 逐字节一致", cases.len());
 }
 
 #[test]
@@ -427,4 +496,135 @@ fn rust_peer_rejects_bad_mac() {
 
     node.stop();
     let _ = fs::remove_dir_all(&a);
+}
+
+/// docs/p2p.md 声称两种实现可互为 peer：这里让 Rust 客户端直接从 Python 节点取数据，
+/// 并验证 Python 节点会拒绝 Rust 用错误 token 生成的 MAC。
+#[test]
+fn rust_client_pulls_blob_from_python_peer() {
+    let Some(server) = start_server() else { return };
+    let script = repo_root().join("selfshare.py");
+    let py = python_exe();
+    let peer_dir = tmp_dir("py-peer");
+    let _ = fs::remove_dir_all(&peer_dir);
+    fs::create_dir_all(&peer_dir).unwrap();
+
+    let mounted = Command::new(&py)
+        .arg(&script)
+        .args([
+            "mount",
+            &peer_dir.to_string_lossy(),
+            "--url",
+            &server.url,
+            "--vault",
+            &server.vault,
+            "--token",
+            &server.token,
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    if !mounted.map(|s| s.success()).unwrap_or(false) {
+        eprintln!("跳过：python mount 不可用");
+        let _ = fs::remove_dir_all(&peer_dir);
+        return;
+    }
+
+    let payload = "payload served by the python peer";
+    write(&peer_dir, "python-held.bin", payload);
+    let uploaded = Command::new(&py)
+        .arg(&script)
+        .args(["sync", &peer_dir.to_string_lossy()])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    assert!(uploaded.map(|s| s.success()).unwrap_or(false), "python 端上传应成功");
+    let digest = selfshare_core::util::sha256_file(&peer_dir.join("python-held.bin")).unwrap();
+
+    let mut peer = match Command::new(&py)
+        .arg(&script)
+        .args([
+            "watch", &peer_dir.to_string_lossy(), "--p2p",
+            "--interval", "1", "--debounce", "1",
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(_) => {
+            eprintln!("跳过：无法启动 python peer");
+            let _ = fs::remove_dir_all(&peer_dir);
+            return;
+        }
+    };
+
+    let client = Client::new(&server.url, &server.vault, &server.token);
+    let mut found: Option<(String, String)> = None;
+    for _ in 0..60 {
+        if let Ok(ps) = client.peers(None) {
+            if let Some(p) = ps.first() {
+                found = Some((p.listen.clone(), p.peer_id.clone()));
+                break;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    }
+    let Some((listen, peer_id)) = found else {
+        let _ = peer.kill();
+        let _ = fs::remove_dir_all(&peer_dir);
+        panic!("Python peer 没有注册到中心服务器");
+    };
+
+    let got = client.get_blob_p2p(&digest, &listen, &peer_id);
+    let wrong = Client::new(&server.url, &server.vault, "totally-wrong-token");
+    let rejected = wrong.get_blob_p2p(&digest, &listen, &peer_id).is_err();
+
+    let _ = peer.kill();
+    let _ = peer.wait();
+    let _ = fs::remove_dir_all(&peer_dir);
+
+    assert_eq!(
+        got.expect("Rust 客户端应能从 Python peer 直连取回 blob").as_slice(),
+        payload.as_bytes()
+    );
+    assert!(rejected, "Python 节点必须拒绝错误 token 的 Rust 请求");
+    println!("跨实现 peer 互通已验证：python 节点 {} (peer_id={})", listen, peer_id);
+}
+
+/// 预演（dry run）必须报告“会拉取哪些文件”，与 Python 端保持一致，
+/// 同时不能真的写盘。
+#[test]
+fn rust_dry_run_reports_pending_pulls() {
+    let Some(server) = start_server() else { return };
+    let a = tmp_dir("rs-dr-a");
+    let b = tmp_dir("rs-dr-b");
+    let _ = fs::remove_dir_all(&a);
+    let _ = fs::remove_dir_all(&b);
+    fs::create_dir_all(&b).unwrap();
+
+    write(&a, "pending.txt", "to be pulled");
+    sync(&server, &a);
+
+    let state = mount(&server, &b);
+    let cfg = state.config().clone();
+    let client = Client::new(&cfg.url, &cfg.vault, &cfg.token);
+    let mut opts = SyncOptions::load(&b);
+    opts.dry_run = true;
+    let mut syncer = Syncer::with_options(client, state, opts);
+    let report = syncer.sync().expect("预演同步失败");
+
+    assert_eq!(
+        report.pulls.len(),
+        1,
+        "预演应报告 1 个待拉取文件，否则 GUI 预演与真实同步结果不一致"
+    );
+    assert!(
+        !b.join("pending.txt").exists(),
+        "预演不能真的把文件写到磁盘"
+    );
+    println!("预演报告 pulls={:?}", report.pulls);
+
+    let _ = fs::remove_dir_all(&a);
+    let _ = fs::remove_dir_all(&b);
 }

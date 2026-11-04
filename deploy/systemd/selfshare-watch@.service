@@ -7,7 +7,9 @@ Wants=network-online.target
 Type=simple
 # %i 是实例名，对应 ~/.config/selfshare/%i.env
 EnvironmentFile=%h/.config/selfshare/%i.env
-WorkingDirectory=${SELFSHARE_PROJECT_DIR}
+# 不要在这里写 WorkingDirectory=${SELFSHARE_PROJECT_DIR}：
+# systemd 不对 WorkingDirectory= 做环境变量展开，会判为非法路径导致单元无法启动。
+# ExecStart 已使用绝对脚本路径，进程不依赖工作目录。
 ExecStart=/usr/bin/python3 ${SELFSHARE_PROJECT_DIR}/selfshare.py watch ${SELFSHARE_SYNC_FOLDER} --interval 5 --debounce 2 --full-interval 120
 Restart=on-failure
 RestartSec=10s

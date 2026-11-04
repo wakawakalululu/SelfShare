@@ -33,6 +33,9 @@ from .store import Conflict, Registry, Vault, valid_vault_id
 from .util import human_size, now_iso, sha256_bytes
 
 MAX_BODY = 2 * 1024 * 1024 * 1024  # 2 GiB single-blob ceiling
+# 批量上传：小文件同步的瓶颈是请求数而不是字节数
+BULK_MAX_ITEMS = 512
+BULK_MAX_ITEM_BYTES = 4 * 1024 * 1024
 
 
 class HandlerError(Exception):
@@ -173,6 +176,8 @@ class Handler(BaseHTTPRequestHandler):
                     self._send_json(200, {"entries": vault.history(rel, max(1, min(limit, 500)))})
                 elif action == "stat" and method in ("GET", "HEAD"):
                     self._send_json(200, vault.stat())
+                elif action == "blobbulk" and method == "POST":
+                    self._handle_blob_bulk(vault)
                 elif action == "blob" and rest:
                     digest = rest[0].lower()
                     if method == "PUT":
@@ -186,7 +191,9 @@ class Handler(BaseHTTPRequestHandler):
 
                     preg = PeerRegistry(vault.path)
                     exclude = (query.get("exclude") or [None])[0] or None
-                    self._send_json(200, {"peers": preg.discover(vault_id, exclude)})
+                    with_blobs = (query.get("with_blobs") or [""])[0] in ("1", "true")
+                    self._send_json(200, {"peers": preg.discover(
+                        vault_id, exclude, with_blobs)})
                 elif action == "peer" and rest and method == "POST":
                     sub = rest[0]
                     body = self._read_body()
@@ -208,10 +215,13 @@ class Handler(BaseHTTPRequestHandler):
                             version=str(req.get("version", "")),
                         )
                     elif sub == "heartbeat":
+                        raw_blobs = req.get("blobs")
                         result = preg.heartbeat(
                             vault_id,
                             peer_id=str(req.get("peer_id", "")),
                             blob_count=int(req.get("blob_count") or 0),
+                            blobs=([str(b) for b in raw_blobs]
+                                   if isinstance(raw_blobs, list) else None),
                         )
                     elif sub == "unregister":
                         result = preg.unregister(vault_id, peer_id=str(req.get("peer_id", "")))
@@ -269,6 +279,47 @@ class Handler(BaseHTTPRequestHandler):
         raise HandlerError(404, "配对码无效、已使用或已过期")
 
     # --------------------------------------------------------------- blobs ---
+    def _handle_blob_bulk(self, vault: Vault) -> None:
+        """一次请求写入多个小 blob；单项摘要校验失败只影响该项，不中断整批。"""
+        import base64
+        import re
+
+        body = self._read_body()
+        try:
+            req = json.loads(body.decode("utf-8") or "{}")
+        except ValueError:
+            raise HandlerError(400, "bulk body must be JSON")
+        items = req.get("blobs")
+        if not isinstance(items, list):
+            raise HandlerError(400, "blobs must be a list")
+        if len(items) > BULK_MAX_ITEMS:
+            raise HandlerError(413, "too many blobs in one batch")
+        hex64 = re.compile(r"^[0-9a-f]{64}$")
+        stored, existed, failed = [], [], []
+        for item in items:
+            digest = str((item or {}).get("hash") or "").lower()
+            if not hex64.match(digest):
+                failed.append({"hash": digest[:64], "error": "bad digest"})
+                continue
+            try:
+                data = base64.b64decode((item or {}).get("data") or "", validate=True)
+            except Exception:
+                failed.append({"hash": digest, "error": "bad base64"})
+                continue
+            if len(data) > BULK_MAX_ITEM_BYTES:
+                failed.append({"hash": digest, "error": "item too large for bulk"})
+                continue
+            actual = sha256_bytes(data)
+            if actual != digest:
+                failed.append({"hash": digest, "error": "digest mismatch: body %s" % actual})
+                continue
+            if vault.has_blob(digest):
+                existed.append(digest)
+                continue
+            vault.put_blob_bytes(data)
+            stored.append(digest)
+        self._send_json(200, {"stored": stored, "existed": existed, "failed": failed})
+
     def _handle_put_blob(self, vault: Vault, digest: str) -> None:
         body = self._read_body()
         actual = sha256_bytes(body)

@@ -30,6 +30,7 @@ import shutil
 import socket
 import sqlite3
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -48,6 +49,29 @@ from .util import (
 STATE_DIR = ".selfshare"
 LOCK_NAME = "sync.lock"
 CONFLICT_TAG = "冲突副本"
+
+
+def _workers(env_name: str, default: int) -> int:
+    raw = os.environ.get(env_name, "")
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return max(1, min(64, value)) if value > 0 else default
+
+
+# urllib 每条请求都新建 TCP 连接，串行上传上千个小文件会慢到几十秒；
+# 按内容摘要去重后并发上传是这里最大的一笔开销节省。
+UPLOAD_WORKERS = _workers("SELFSHARE_UPLOAD_WORKERS", 8)
+# 小文件直接 PUT：内容寻址本身幂等，省掉一次 HEAD 往返比避免重复上传更划算。
+# 大文件仍先 HEAD，免得把已存在的 GB 级内容再传一遍。
+HEAD_SKIP_ABOVE = 1024 * 1024
+# 下载同样按请求数计成本；每个文件写各自的临时文件，可以安全并发。
+DOWNLOAD_WORKERS = _workers("SELFSHARE_DOWNLOAD_WORKERS", 8)
+# 批量上传的分组上限（服务端另有 512 项 / 单项 4 MiB 的硬限制）
+BULK_ITEM_MAX = 256 * 1024
+BULK_BATCH_ITEMS = 200
+BULK_BATCH_BYTES = 8 * 1024 * 1024
 
 
 # --------------------------------------------------------------------------- #
@@ -217,6 +241,7 @@ class Syncer:
         self._lock_handle = None
         self.peer_id = None          # P2P：本节点的 peer_id；None 表示不启用 P2P
         self.peer_node = None        # 可选：持有 PeerNode 引用，由 watch/CLI 管理生命周期
+        self.upload_errors: List[str] = []   # 并发上传期间的失败，由主线程汇总进 report
 
     # ------------------------------------------------------------- lifecycle ---
     def __enter__(self) -> "Syncer":
@@ -279,6 +304,9 @@ class Syncer:
                 if self.patterns and is_ignored(child, self.patterns):
                     continue
                 full = os.path.join(dirpath, name)
+                if os.path.islink(full):
+                    # 跟随符号链接会把同步目录之外的内容上传到服务端
+                    continue
                 try:
                     st = os.stat(full)
                 except OSError:
@@ -385,6 +413,7 @@ class Syncer:
         push_entries: List[Tuple[str, Entry]] = []
         pending_pulls: List[Action] = []
         conflict_copies: List[Tuple[str, Action]] = []
+        push_jobs: List[Action] = []
 
         for act in actions:
             if act.kind == "skip":
@@ -427,25 +456,29 @@ class Syncer:
                     if act.local:
                         report.bytes_up += act.local.size or 0
                     continue
-                ok = self._upload_blob(act.rel, act.local, report)
-                if not ok:
+                if act.local is None or act.local.hash is None:
+                    report.errors.append("上传失败 %s: 缺少内容摘要" % act.rel)
                     continue
-                b = base.get(act.rel)
-                push_ops.append({
-                    "op": "put",
-                    "path": act.rel,
-                    "hash": act.local.hash,
-                    "size": act.local.size,
-                    "mtime": act.local.mtime,
-                    "base_hash": None if (b is None or b.deleted) else b.hash,
-                    "force": bool(act.force),
-                })
-                push_entries.append((act.rel, Entry(act.local.hash, act.local.size,
-                                                    act.local.mtime, 0)))
+                push_jobs.append(act)
             elif act.kind == "conflict":
                 report.conflicts.append(act.rel)
                 conflict_copies.append((self._conflict_name(act.rel), act))
                 pending_pulls.append(act)
+
+        # 上传：先按内容摘要去重，再并发推送，成功的才进入提交清单
+        for act in self._upload_pushes(push_jobs, report):
+            b = base.get(act.rel)
+            push_ops.append({
+                "op": "put",
+                "path": act.rel,
+                "hash": act.local.hash,
+                "size": act.local.size,
+                "mtime": act.local.mtime,
+                "base_hash": None if (b is None or b.deleted) else b.hash,
+                "force": bool(act.force),
+            })
+            push_entries.append((act.rel, Entry(act.local.hash, act.local.size,
+                                                act.local.mtime, 0)))
 
         # conflict copies: rename local aside first, then pull remote over it,
         # then upload the copy so the other side gets it too.
@@ -464,7 +497,10 @@ class Syncer:
             digest = sha256_file(dst)
             entry = Entry(digest, st.st_size, st.st_mtime)
             report.pushes.append(copy_rel)
-            if self._upload_blob(copy_rel, entry, report):
+            self.upload_errors = []
+            copy_size = self._upload_blob(copy_rel, entry)
+            if copy_size is not None:
+                report.bytes_up += copy_size
                 push_ops.append({
                     "op": "put",
                     "path": copy_rel,
@@ -474,16 +510,12 @@ class Syncer:
                     "base_hash": None,
                 })
                 push_entries.append((copy_rel, Entry(digest, entry.size, entry.mtime, 0)))
-
+            else:
+                report.errors.extend(self.upload_errors)
+                self.upload_errors = []
         # downloads
         if not dry_run:
-            for act in pending_pulls:
-                if act.remote is None or act.remote.hash is None:
-                    continue
-                try:
-                    self._download(act.rel, act.remote, report)
-                except (RemoteError, OSError) as exc:
-                    report.errors.append("下载失败 %s: %s" % (act.rel, exc))
+            self._download_many(pending_pulls, report)
             if pending_pulls:
                 self.state.commit()
 
@@ -523,50 +555,190 @@ class Syncer:
         return report
 
     # -------------------------------------------------------------- helpers ---
-    def _upload_blob(self, rel: str, entry: Optional[Entry], report: SyncReport) -> bool:
+    def _upload_blob(self, rel: str, entry: Optional[Entry]) -> Optional[int]:
+        """上传单个 blob，返回实际传输字节（已存在则为 0），失败返回 None。
+
+        不碰共享的 report，方便被线程池并发调用。
+        """
         if entry is None or entry.hash is None:
-            return False
+            return None
         try:
-            if self.client.has_blob(entry.hash):
-                return True
             src = abs_path(self.folder, rel)
             actual_size = os.path.getsize(src)
             if actual_size != entry.size:
                 raise OSError("文件在同步过程中被修改: %s" % rel)
+            if actual_size > HEAD_SKIP_ABOVE and self.client.has_blob(entry.hash):
+                return 0
             self.client.put_blob_file(entry.hash, src)
-            report.bytes_up += actual_size
-            return True
+            return actual_size
         except (RemoteError, OSError) as exc:
-            report.errors.append("上传失败 %s: %s" % (rel, exc))
-            return False
+            self.upload_errors.append("上传失败 %s: %s" % (rel, exc))
+            return None
 
-    def _download(self, rel: str, remote: Entry, report: SyncReport) -> None:
-        dest = abs_path(self.folder, rel)
-        ensure_parent(dest)
-        source = "server"
-        if self.peer_id:  # 启用了 P2P 模式：优先从在线节点拉取
-            try:
-                source = self.client.get_blob_with_peers(
-                    remote.hash, dest, exclude_peer_id=self.peer_id
-                )
-            except RemoteError:
+    def _upload_pushes(self, acts: List[Action],
+                       report: SyncReport) -> List[Action]:
+        """按内容摘要去重后上传，返回上传成功的 action（保持原顺序）。
+
+        小文件合并成批量请求（瓶颈是请求数），大文件单独 PUT 且先 HEAD 避免重复传输。
+        """
+        if not acts:
+            return []
+        first_by_hash: Dict[str, Action] = {}
+        for act in acts:
+            if act.local is None or act.local.hash is None:
+                continue
+            first_by_hash.setdefault(act.local.hash, act)
+        jobs = list(first_by_hash.values())
+
+        self.upload_errors = []
+        bad = set()
+        sent_bytes = 0
+        workers = max(1, min(UPLOAD_WORKERS, len(jobs)))
+        small = [a for a in jobs if (a.local.size or 0) <= BULK_ITEM_MAX]
+        large = [a for a in jobs if (a.local.size or 0) > BULK_ITEM_MAX]
+
+        serial_queue = list(large)
+        if small:
+            payloads = []
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                for digest, data, err in pool.map(self._read_small_blob, small):
+                    if err is not None:
+                        self.upload_errors.append(err)
+                        bad.add(digest)
+                    else:
+                        payloads.append((digest, data))
+
+            if payloads and self.client.bulk_supported:
+                handled = set()
+                retry = set()
+                batches = self._chunk_batches(payloads)
+                with ThreadPoolExecutor(max_workers=min(workers, len(batches))) as pool:
+                    for out in pool.map(self._send_bulk_batch, batches):
+                        if out["unsupported"]:
+                            retry.update(out["digests"])
+                        elif out["error"]:
+                            self.upload_errors.append(out["error"])
+                            bad.update(out["digests"])
+                        else:
+                            bad.update(out["failed"])
+                            sent_bytes += out["sent"]
+                            handled.update(d for d in out["digests"] if d not in out["failed"])
+                retry.update(d for d, _ in payloads if d not in handled and d not in bad)
+                for digest, _ in payloads:
+                    if digest in retry:
+                        serial_queue.append(first_by_hash[digest])
+            else:
+                serial_queue.extend(small)
+
+        if serial_queue:
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                for digest, size in pool.map(
+                        lambda a: (a.local.hash, self._upload_blob(a.rel, a.local)),
+                        serial_queue):
+                    if size is None:
+                        bad.add(digest)
+                    else:
+                        sent_bytes += size
+
+        report.bytes_up += sent_bytes
+        report.errors.extend(self.upload_errors)
+        self.upload_errors = []
+        return [act for act in acts
+                if act.local and act.local.hash is not None and act.local.hash not in bad]
+
+    def _chunk_batches(self, payloads):
+        batches, cur, cur_bytes = [], [], 0
+        for digest, data in payloads:
+            if cur and (len(cur) >= BULK_BATCH_ITEMS
+                        or cur_bytes + len(data) > BULK_BATCH_BYTES):
+                batches.append(cur)
+                cur, cur_bytes = [], 0
+            cur.append((digest, data))
+            cur_bytes += len(data)
+        if cur:
+            batches.append(cur)
+        return batches
+
+    def _read_small_blob(self, act: Action) -> Tuple[str, Optional[bytes], Optional[str]]:
+        digest = act.local.hash
+        src = abs_path(self.folder, act.rel)
+        try:
+            st = os.stat(src)
+            if act.local.size is not None and st.st_size != act.local.size:
+                raise OSError("文件在同步过程中被修改: %s" % act.rel)
+            with open(src, "rb") as fh:
+                data = fh.read()
+            return digest, data, None
+        except OSError as exc:
+            return digest, None, "上传失败 %s: %s" % (act.rel, exc)
+
+    def _send_bulk_batch(self, batch):
+        digests = [d for d, _ in batch]
+        try:
+            res = self.client.put_blobs_bulk(batch)
+        except RemoteError as exc:
+            if exc.status == 404:
+                # 旧服务端没有批量端点：本批转串行，之后的批也走串行
+                self.client.bulk_supported = False
+                return {"digests": digests, "failed": set(), "sent": 0,
+                        "error": "", "unsupported": True}
+            return {"digests": digests, "failed": set(digests), "sent": 0,
+                    "error": "批量上传失败: %s" % exc, "unsupported": False}
+        failed = {str(item.get("hash") or "").lower() for item in res.get("failed", [])}
+        sent = sum(len(data) for digest, data in batch if digest not in failed)
+        return {"digests": digests, "failed": failed, "sent": sent,
+                "error": "", "unsupported": False}
+
+    def _fetch_blob(self, act: Action) -> Tuple[Optional[int], str]:
+        """把远端内容落到本地，返回 (字节数, 错误)。不碰状态库和 report，便于并发。"""
+        remote = act.remote
+        if remote is None or remote.hash is None:
+            return None, ""
+        dest = abs_path(self.folder, act.rel)
+        try:
+            ensure_parent(dest)
+            if self.peer_id:  # P2P：优先直连节点，失败回退中心
+                try:
+                    source = self.client.get_blob_with_peers(
+                        remote.hash, dest, exclude_peer_id=self.peer_id
+                    )
+                except RemoteError:
+                    source = "server"
+                    self.client.get_blob(remote.hash, dest)
+            else:
                 source = "server"
                 self.client.get_blob(remote.hash, dest)
-        else:
-            self.client.get_blob(remote.hash, dest)
-        if remote.size is not None:
-            actual = os.path.getsize(dest)
-            if actual != remote.size:
-                report.errors.append("校验失败 %s: 期望 %s 字节, 实际 %s" % (rel, remote.size, actual))
-                return
-        if remote.mtime:
-            try:
-                os.utime(dest, (remote.mtime, remote.mtime))
-            except OSError:
-                pass
-        st = os.stat(dest)
-        self.state.put(rel, remote.hash, st.st_size, st.st_mtime, remote.rev)
-        report.bytes_down += st.st_size
+            if source.startswith("peer:"):
+                self._log("  %s <- %s" % (act.rel, source))
+            if remote.size is not None:
+                actual = os.path.getsize(dest)
+                if actual != remote.size:
+                    return None, "校验失败 %s: 期望 %s 字节, 实际 %s" % (
+                        act.rel, remote.size, actual)
+            if remote.mtime:
+                try:
+                    os.utime(dest, (remote.mtime, remote.mtime))
+                except OSError:
+                    pass
+            return os.path.getsize(dest), ""
+        except (RemoteError, OSError) as exc:
+            return None, "下载失败 %s: %s" % (act.rel, exc)
+
+    def _download_many(self, acts: List[Action], report: SyncReport) -> None:
+        jobs = [a for a in acts if a.remote is not None and a.remote.hash]
+        if not jobs:
+            return
+        workers = max(1, min(DOWNLOAD_WORKERS, len(jobs)))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            results = list(pool.map(self._fetch_blob, jobs))
+        for act, (size, err) in zip(jobs, results):
+            if err:
+                report.errors.append(err)
+            if size is None:
+                continue
+            st = os.stat(abs_path(self.folder, act.rel))
+            self.state.put(act.rel, act.remote.hash, st.st_size, st.st_mtime, act.remote.rev)
+            report.bytes_down += size
 
     def _conflict_name(self, rel: str) -> str:
         directory, _, name = rel.rpartition("/")

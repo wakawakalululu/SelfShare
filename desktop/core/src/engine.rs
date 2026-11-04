@@ -14,10 +14,27 @@
 //! | 未变 | 远端删除 | 本地删除 |
 //! | 有改动 | 远端删除 | 保留本地并重新上传 |
 
+use std::collections::HashSet;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+
+/// 批量上传的分组上限（服务端另有 512 项 / 单项 4 MiB 的硬限制）
+const BULK_ITEM_MAX: u64 = 256 * 1024;
+const BULK_BATCH_ITEMS: usize = 200;
+const BULK_BATCH_BYTES: usize = 8 * 1024 * 1024;
+
+#[derive(Debug, Clone)]
+struct PushJob {
+    path: String,
+    full: PathBuf,
+    digest: String,
+    size: u64,
+    mtime: f64,
+    base_hash: Option<String>,
+    force: bool,
+}
 
 use crate::client::{Client, Entry, Op};
 use crate::state::{BaseEntry, LocalState};
@@ -295,6 +312,7 @@ impl Syncer {
         let mut pending_entries: Vec<(String, BaseEntry)> = Vec::new();
         let mut pulls: Vec<String> = Vec::new();
         let mut conflicts: Vec<(String, String)> = Vec::new(); // (原路径, 副本路径)
+        let mut push_jobs: Vec<PushJob> = Vec::new();
 
         for (idx, act) in actions.iter().enumerate() {
             match act.kind {
@@ -371,31 +389,15 @@ impl Syncer {
                             continue;
                         }
                     };
-                    if let Err(e) = self.upload_blob(&full, &digest, size) {
-                        report.errors.push(format!("上传失败 {}：{}", act.path, e));
-                        continue;
-                    }
-                    report.bytes_up += size as i64;
-                    let force = act.reason.contains("远端已删");
-                    ops.push(Op {
-                        op: "put",
+                    push_jobs.push(PushJob {
                         path: act.path.clone(),
-                        hash: Some(digest.clone()),
-                        size: Some(size as i64),
-                        mtime: Some(mtime),
+                        full,
+                        digest,
+                        size,
+                        mtime,
                         base_hash: self.state.base_of(&act.path).and_then(|b| b.hash.clone()),
-                        force,
+                        force: act.reason.contains("远端已删"),
                     });
-                    pending_entries.push((
-                        act.path.clone(),
-                        BaseEntry {
-                            hash: Some(digest),
-                            size: Some(size as i64),
-                            mtime: Some(mtime),
-                            rev: 0,
-                            deleted: false,
-                        },
-                    ));
                 }
                 ActionKind::Conflict => {
                     report.conflicts.push(act.path.clone());
@@ -446,8 +448,46 @@ impl Syncer {
             }
         }
 
+        // 上传：按摘要去重，小文件合并成批量请求，大文件与老服务端走逐个 PUT
+        let stored = self.flush_pushes(&push_jobs, &mut report);
+        for job in &push_jobs {
+            if !stored.contains(&job.digest) {
+                continue;
+            }
+            ops.push(Op {
+                op: "put",
+                path: job.path.clone(),
+                hash: Some(job.digest.clone()),
+                size: Some(job.size as i64),
+                mtime: Some(job.mtime),
+                base_hash: job.base_hash.clone(),
+                force: job.force,
+            });
+            pending_entries.push((
+                job.path.clone(),
+                BaseEntry {
+                    hash: Some(job.digest.clone()),
+                    size: Some(job.size as i64),
+                    mtime: Some(job.mtime),
+                    rev: 0,
+                    deleted: false,
+                },
+            ));
+        }
+
         // 下载（含冲突后拉取远端版本）
-        if !self.options.dry_run {
+        if self.options.dry_run {
+            // 预演必须把“会拉取哪些文件”报出来，否则 GUI 预演显示拉取 0、
+            // 与随后的真实同步不一致（Python 端一直是对的）
+            for rel in &pulls {
+                if let Some(r) = remote.get(rel) {
+                    if r.hash.is_some() {
+                        report.bytes_down += r.size.unwrap_or(0);
+                        report.pulls.push(rel.clone());
+                    }
+                }
+            }
+        } else {
             for rel in &pulls {
                 let Some(r) = remote.get(rel) else { continue };
                 let Some(digest) = r.hash.as_ref() else { continue };
@@ -529,6 +569,83 @@ impl Syncer {
         }
         let _ = conflicts;
         Ok(report)
+    }
+
+    /// 按内容摘要去重后上传：小文件合并成批量请求（瓶颈是请求数），
+    /// 大文件逐个 PUT；服务端不支持批量端点时整批回退串行。返回上传成功的摘要集合。
+    fn flush_pushes(&self, jobs: &[PushJob], report: &mut SyncReport) -> HashSet<String> {
+        let mut stored: HashSet<String> = HashSet::new();
+        let mut uniq: Vec<&PushJob> = Vec::new();
+        let mut seen: HashSet<String> = HashSet::new();
+        for job in jobs {
+            if seen.insert(job.digest.clone()) {
+                uniq.push(job);
+            }
+        }
+        let (small, large): (Vec<&PushJob>, Vec<&PushJob>) =
+            uniq.into_iter().partition(|j| j.size <= BULK_ITEM_MAX);
+
+        let mut bulk_supported = !small.is_empty();
+        let mut idx = 0usize;
+        while idx < small.len() && bulk_supported {
+            let start = idx;
+            let mut batch: Vec<(String, Vec<u8>)> = Vec::new();
+            let mut bytes = 0usize;
+            while idx < small.len()
+                && batch.len() < BULK_BATCH_ITEMS
+                && bytes + small[idx].size as usize <= BULK_BATCH_BYTES
+            {
+                match fs::read(&small[idx].full) {
+                    Ok(data) => {
+                        bytes += data.len();
+                        batch.push((small[idx].digest.clone(), data));
+                    }
+                    Err(e) => report
+                        .errors
+                        .push(format!("读取失败 {}：{}", small[idx].path, e)),
+                }
+                idx += 1;
+            }
+            if batch.is_empty() {
+                continue;
+            }
+            match self.client.put_blobs_bulk(&batch) {
+                Ok(res) => {
+                    let failed: HashSet<String> =
+                        res.failed.iter().map(|f| f.hash.clone()).collect();
+                    for f in &res.failed {
+                        report.errors.push(format!("上传失败 {}：{}", f.hash, f.error));
+                    }
+                    for (digest, data) in &batch {
+                        if failed.contains(digest) {
+                            continue;
+                        }
+                        stored.insert(digest.clone());
+                        report.bytes_up += data.len() as i64;
+                    }
+                }
+                Err(e) if e.status == 404 => {
+                    bulk_supported = false;
+                    idx = start;
+                }
+                Err(e) => report.errors.push(format!("批量上传失败：{}", e)),
+            }
+        }
+
+        let mut serial: Vec<&&PushJob> = large.iter().collect();
+        if idx < small.len() {
+            serial.extend(small[idx..].iter());
+        }
+        for job in serial {
+            match self.upload_blob(&job.full, &job.digest, job.size) {
+                Ok(()) => {
+                    stored.insert(job.digest.clone());
+                    report.bytes_up += job.size as i64;
+                }
+                Err(e) => report.errors.push(format!("上传失败 {}：{}", job.path, e)),
+            }
+        }
+        stored
     }
 
     fn upload_blob(&self, path: &Path, digest: &str, size: u64) -> Result<(), String> {

@@ -61,8 +61,25 @@ pub fn sha256_bytes(data: &[u8]) -> String {
     hex(&hasher.finalize())
 }
 
-fn hex(bytes: &[u8]) -> String {
-    let mut s = String::with_capacity(bytes.len() * 2);
+/// 标准 base64（带填充）。批量上传端点用 JSON+base64 传小文件，
+/// 手写以免为此引入新依赖。
+pub fn base64_encode(data: &[u8]) -> String {
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
+    for chunk in data.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = *chunk.get(1).unwrap_or(&0) as u32;
+        let b2 = *chunk.get(2).unwrap_or(&0) as u32;
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        out.push(T[((n >> 18) & 63) as usize] as char);
+        out.push(T[((n >> 12) & 63) as usize] as char);
+        out.push(if chunk.len() > 1 { T[((n >> 6) & 63) as usize] as char } else { '=' });
+        out.push(if chunk.len() > 2 { T[(n & 63) as usize] as char } else { '=' });
+    }
+    out
+}
+
+fn hex(bytes: &[u8]) -> String {    let mut s = String::with_capacity(bytes.len() * 2);
     for b in bytes {
         s.push_str(&format!("{:02x}", b));
     }
@@ -332,5 +349,21 @@ mod tests {
         let s = now_stamp();
         assert_eq!(s.len(), 15);
         assert!(s.chars().nth(8) == Some('-'));
+    }
+
+    #[test]
+    fn base64_matches_rfc4648_vectors() {
+        let cases: &[(&[u8], &str)] = &[
+            (b"", ""),
+            (b"f", "Zg=="),
+            (b"fo", "Zm8="),
+            (b"foo", "Zm9v"),
+            (b"foob", "Zm9vYg=="),
+            (b"fooba", "Zm9vYmE="),
+            (b"foobar", "Zm9vYmFy"),
+        ];
+        for (input, want) in cases {
+            assert_eq!(&base64_encode(input), want, "输入 {:?}", std::str::from_utf8(input));
+        }
     }
 }

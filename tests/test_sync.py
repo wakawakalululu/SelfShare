@@ -16,7 +16,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from selfshare.client import Client
+from selfshare.client import Client, RemoteError
 from selfshare.server import SyncServer
 from selfshare.store import Registry
 from selfshare.sync import Syncer
@@ -38,6 +38,16 @@ def read(path: str) -> str:
 
 class ServerFixture:
     def __init__(self):
+        self.ext = None
+        if os.environ.get("SELFSHARE_SERVER_BIN"):
+            # 整套用例改跑在外部服务端上（例如 Go 实现），验证协议与存储兼容
+            from external_server import ExternalServer
+
+            self.ext = ExternalServer("test", "tok-test-123")
+            self.ext.create_vault()
+            self.root = self.ext.root
+            self.url = self.ext.url
+            return
         self.root = tempfile.mkdtemp(prefix="selfshare-server-")
         self.registry = Registry(self.root)
         self.info = self.registry.create_vault("test", token="tok-test-123")
@@ -51,6 +61,9 @@ class ServerFixture:
         return Client(self.url, "test", "tok-test-123", timeout=30)
 
     def stop(self) -> None:
+        if self.ext is not None:
+            self.ext.stop()
+            return
         self.server.shutdown()
         self.server.server_close()
         self.registry.close_all() if hasattr(self.registry, "close_all") else None
@@ -254,6 +267,95 @@ class SyncTestCase(unittest.TestCase):
             self.assertEqual(read(os.path.join(c, "t2.txt")), "from B")
         finally:
             shutil.rmtree(c, ignore_errors=True)
+
+
+class SymlinkSafetyTestCase(unittest.TestCase):
+    """跟随符号链接会把同步目录之外的文件内容上传到服务端。"""
+
+    def setUp(self):
+        self.fx = ServerFixture()
+        self.a = tempfile.mkdtemp(prefix="selfshare-link-")
+
+    def tearDown(self):
+        self.fx.stop()
+        shutil.rmtree(self.a, ignore_errors=True)
+
+    def test_symlink_target_content_is_not_uploaded(self):
+        write(os.path.join(self.a, "real.txt"), "inside the folder\n")
+        link = os.path.join(self.a, "link.txt")
+        try:
+            os.symlink(os.path.join(self.a, "real.txt"), link)
+        except OSError:
+            self.skipTest("本机不允许创建符号链接")
+
+        with Syncer(self.a, self.fx.client()) as s:
+            s.sync()
+
+        remote = {e["path"] for e in self.fx.client().manifest().get("entries", [])}
+        self.assertIn("real.txt", remote)
+        self.assertNotIn("link.txt", remote)
+
+
+class BulkUploadTestCase(unittest.TestCase):
+    """批量上传：单项摘要造假不能连累同批其它项，也不能污染存储。"""
+
+    def setUp(self):
+        self.fx = ServerFixture()
+        self.a = tempfile.mkdtemp(prefix="selfshare-bulk-")
+
+    def tearDown(self):
+        self.fx.stop()
+        shutil.rmtree(self.a, ignore_errors=True)
+
+    def test_bad_digest_only_fails_that_item(self):
+        import base64
+        import hashlib
+
+        good = b"good content\n"
+        good_hash = hashlib.sha256(good).hexdigest()
+        bad_hash = hashlib.sha256(b"claimed\n").hexdigest()
+        client = self.fx.client()
+        res = client.put_blobs_bulk([
+            (good_hash, good),
+            (bad_hash, b"actually different\n"),   # 摘要与内容不符
+        ])
+        self.assertEqual(res["stored"], [good_hash])
+        self.assertEqual(len(res["failed"]), 1)
+        self.assertEqual(res["failed"][0]["hash"], bad_hash)
+        self.assertTrue(client.has_blob(good_hash))
+        self.assertFalse(client.has_blob(bad_hash), "造假项不应被写入存储")
+
+    def test_bulk_and_serial_paths_agree(self):
+        import hashlib
+
+        payload = "same bytes\n"
+        write(os.path.join(self.a, "f.txt"), payload)
+        with Syncer(self.a, self.fx.client()) as s:
+            s.sync()
+        digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+        self.assertTrue(self.fx.client().has_blob(digest))
+        remote = {e["path"] for e in self.fx.client().manifest().get("entries", [])}
+        self.assertIn("f.txt", remote)
+
+
+    def test_falls_back_when_server_lacks_bulk(self):
+        # 已发布的老服务端没有 /blobbulk，新客户端必须退回逐个 PUT
+        client = self.fx.client()
+
+        def unsupported(items):
+            raise RemoteError("POST -> HTTP 404 unknown endpoint", 404)
+
+        client.put_blobs_bulk = unsupported
+        write(os.path.join(self.a, "s1.txt"), "bulk unsupported\n")
+        write(os.path.join(self.a, "s2.txt"), "still lands\n")
+        with Syncer(self.a, client) as s:
+            report = s.sync()
+
+        self.assertEqual(report.errors, [], "回退不应产生错误")
+        self.assertFalse(client.bulk_supported)
+        remote = {e["path"] for e in client.manifest().get("entries", [])}
+        self.assertIn("s1.txt", remote)
+        self.assertIn("s2.txt", remote)
 
 
 if __name__ == "__main__":

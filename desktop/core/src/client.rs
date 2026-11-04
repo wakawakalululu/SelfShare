@@ -97,6 +97,24 @@ pub struct CommitResult {
     pub conflicts: Vec<ConflictItem>,
 }
 
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct BulkResult {
+    #[serde(default)]
+    pub stored: Vec<String>,
+    #[serde(default)]
+    pub existed: Vec<String>,
+    #[serde(default)]
+    pub failed: Vec<BulkFailure>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct BulkFailure {
+    #[serde(default)]
+    pub hash: String,
+    #[serde(default)]
+    pub error: String,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct HistoryItem {
     pub path: String,
@@ -236,6 +254,33 @@ impl Client {
         }
         let wrap: Wrap = self.get_json(&url)?;
         Ok(wrap.entries)
+    }
+
+    /// 一次提交多个小 blob。小文件同步的瓶颈是请求数：
+    /// 上千个 1 KB 文件逐个 PUT 要几十秒。
+    pub fn put_blobs_bulk(&self, items: &[(String, Vec<u8>)]) -> Result<BulkResult> {
+        let blobs: Vec<serde_json::Value> = items
+            .iter()
+            .map(|(digest, data)| {
+                serde_json::json!({
+                    "hash": digest,
+                    "data": crate::util::base64_encode(data),
+                })
+            })
+            .collect();
+        let body = serde_json::json!({ "blobs": blobs });
+        let resp = self
+            .request("POST", &self.url("blobbulk", ""))
+            .set("Content-Type", "application/json")
+            .send_string(&body.to_string())
+            .map_err(|e| self.to_remote(e))?;
+        let text = resp
+            .into_string()
+            .map_err(|e| RemoteError { message: e.to_string(), status: 0 })?;
+        serde_json::from_str(&text).map_err(|e| RemoteError {
+            message: format!("bulk 响应解析失败：{}", e),
+            status: 0,
+        })
     }
 
     pub fn has_blob(&self, digest: &str) -> Result<bool> {
