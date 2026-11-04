@@ -6,7 +6,7 @@
 | 版本 | 服务端 `2.0.0`（`--version`）；HTTP `ServiceVersion` 保持 `1.0` 以兼容 v1 客户端 |
 | 记录日期 | 2026-11-04 |
 | 基线 | `master` `42d67645af534c5eec3c43668311604616381745`；`v1.3.0` tag `714e9ee91cfe0e69ad9fb25e4c3fdc9a37f36d85` |
-| 当前状态 | 本机开发与验证完成；`git` CLI 已可用（Git for Windows 与 WSL），提交/推送结果以仓库 `git log` 与 GitHub Actions 为准；CI / Release 待推送后复验 |
+| 当前状态 | 本机开发与验证完成；4 个原子提交已生成（`746edf3`、`d379401`、`2f1c63c`、`982138d`），推送因 GitHub 凭据认证失败未完成（本地 `ahead 4`）；CI / Release 待推送后复验 |
 | 数据来源 | 本机命令输出；对照 `v2/README.md`「验证状态」、`PROJECT_STATUS.md` §1.1.1、`CHANGELOG.md` `[Unreleased]` |
 
 ---
@@ -202,7 +202,7 @@ docker run -d --name selfshare -p 8585:8585 -v selfshare-data:/data \
 | 5 平台二进制运行 | 仅 Windows amd64 与 WSL linux/amd64 实测运行；CI 只做交叉编译不运行 | `ci-v2.yml` → `server-build` job（5 目标矩阵）+ `release.yml` → `v2-server-assets` | 产物齐全、体积正常；linux/arm64、darwin 双架构需人工在目标机验证 |
 | Release 发布流程 | 需要 tag 或 `workflow_dispatch` 且必须先推送 | `release.yml` → `windows-bundle`（v1）、`v2-server-assets`（v2 5 平台）、`publish`（合并资产 + CHANGELOG notes） | `dist/*.zip` 与 `dist/v2/selfshare-server-*` 均在 Release 资产中 |
 | GitHub Pages 文档站 | `docs/`、`wiki` 改动需推送触发 | `.github/workflows/pages.yml` | 文档站构建发布成功、快速开始页面为 v1.3.0 配对流程 |
-| Git 提交 / 推送 | 本机已定位 `C:\Program Files\Git\cmd\git.exe`（未加入 PATH）与 WSL git 2.43 | **无 CI 覆盖，需人工** | 复核 `git diff` 后按 §5 P0-4 提交；推送需 GitHub 凭据，结果以 Actions / Release 运行为准 |
+| Git 提交 / 推送 | 4 个原子提交已完成、工作区干净；`git push origin master` 返回 128（`Invalid username or token. Password authentication is not supported`），本地 `ahead 4` | **无 CI 覆盖，需人工** | 在凭据管理器更新 GitHub PAT（或改用 SSH）后重跑 `git push origin master`；推送成功才会触发 CI / Pages / Release |
 
 ### 4.2 剩余风险
 
