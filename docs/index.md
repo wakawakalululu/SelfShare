@@ -27,24 +27,27 @@
 | 服务端 + GUI | 需要托盘、进度、历史界面 | `selfshare_desktop.exe` |
 | 中心认证 + P2P | 内网多机，减少服务器带宽 | `sync --p2p` |
 
-## 快速开始
+## 快速开始（v1.3.0 配对流程）
 
 ### 服务端
 
 ```bash
-python selfshare.py vault create work --root D:\SelfShareData
 python selfshare.py server --root D:\SelfShareData --port 8484
 ```
+
+首次启动自动创建 `default` 库并打印地址与 30 分钟内有效的配对码。
 
 ### 客户端
 
 ```bash
-python selfshare.py mount D:\同步盘 --url http://192.168.1.10:8484 --vault work --token <令牌>
-python selfshare.py sync  D:\同步盘
+python selfshare.py pair D:\同步盘 --url http://192.168.1.10:8484 --code SS-XXXX-XXXX-XXXX
 python selfshare.py watch D:\同步盘 --p2p
 ```
 
-两台机器都 `mount` 同一个库，就完成了跨主机挂载。
+`pair` 自动完成换令牌、写配置与首次同步；桌面端在「连接同步文件夹」里填同样的地址与配对码即可。
+旧流程 `vault create` + `mount --token` 仍保留用于高级场景，但不再是推荐入口。
+
+> 想用 Go 单二进制或 Docker 部署服务端（v2），参见仓库根 `README.md` 的 v2 章节与 `v2/README.md`。
 
 ## 文档
 

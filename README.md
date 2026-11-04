@@ -45,7 +45,7 @@ powershell -ExecutionPolicy Bypass -File deploy\windows\install-autostart.ps1 `
   -GuiExe "C:\Program Files\SelfShare\selfshare_desktop.exe"
 ```
 
-就这样。之后在两台机器的文件夹里增删改文件，几秒内就会同步到对端。
+就这样。之后在两台机器的文件夹里增删改文件：本地改动几秒内就会上传；对端若有自己的改动会顺带同步回来，完全空闲时最长等 `--full-interval`（默认 120 秒）的远端巡检。
 
 ---
 
@@ -80,6 +80,24 @@ selfshare doctor D:\同步盘         # 出问题时自检
 - [桌面客户端](https://wakawakalululu.github.io/SelfShare/gui.html)
 - [架构](https://wakawakalululu.github.io/SelfShare/architecture.html)
 
+## v2：Go 服务端 + Rust/Tauri 客户端（快速部署）
+
+服务端已用 Go 重写为单二进制，零配置起步，首次启动自动建库并打印配对码：
+
+```bash
+# 二进制（从 Release 下载或自行构建）
+./selfshare-server --root /var/lib/selfshare --port 8484
+./selfshare-server --version
+
+# Docker
+cd v2/server && docker build -t selfshare-server:2 .
+docker run -d --name selfshare -p 8484:8484 -v selfshare-data:/data selfshare-server:2
+```
+
+桌面端基于 Rust + Tauri 重构，复用同一份同步内核；托盘状态、暂停/恢复与一键同步参考
+[syncthingtray](https://github.com/Martchus/syncthingtray)。完整参数、实测验证结果与构建命令见
+[v2/README.md](v2/README.md)。v1 的 Python 服务端与 Flutter 客户端仍可继续使用。
+
 ## 下载
 
 [最新 Release](https://github.com/wakawakalululu/SelfShare/releases) 里有 Windows 便携包（解压即用）和服务端压缩包。
@@ -93,7 +111,7 @@ selfshare doctor D:\同步盘         # 出问题时自检
 
 ## 开发
 
-Python 15 + P2P 3 测试，Rust 6 单元 + 9 集成测试，`flutter analyze` 零问题。详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+Python 29 个测试方法、Rust 内核 18 项测试、Go 服务端 20 项测试，`flutter analyze` 零问题。详见 [CONTRIBUTING.md](CONTRIBUTING.md) 与 [v2/README.md](v2/README.md)。
 
 ## 许可
 

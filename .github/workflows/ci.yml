@@ -2,10 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [master, main]
+    branches: [master]
     tags: ['v*']
   pull_request:
-    branches: [master, main]
+    branches: [master]
   workflow_dispatch:
 
 concurrency:
@@ -51,7 +51,7 @@ jobs:
         shell: bash
         run: |
           python selfshare.py --version
-          python selfshare.py vault list --root "$RUNNER_TEMP/ss-ci" || true
+          python selfshare.py vault list --root "$RUNNER_TEMP/ss-ci"
 
   rust:
     name: Rust core tests
@@ -82,16 +82,8 @@ jobs:
         working-directory: desktop/core
         shell: bash
         run: |
-          set +e
+          set -o pipefail
           cargo test --release -- --nocapture 2>&1 | tee /tmp/rust-test.log
-          code=${PIPESTATUS[0]}
-          if [ "$code" -ne 0 ]; then
-            # 把失败摘要写进 annotation，便于在 PR 里直接看到
-            grep -E "^(test .* FAILED|---- .* stdout ----|thread .* panicked|assertion|left:|right:)" -A3 /tmp/rust-test.log               | head -60 | while IFS= read -r line; do echo "::error::$line"; done
-            echo "=== last 80 lines ==="
-            tail -80 /tmp/rust-test.log
-          fi
-          exit $code
 
       - name: Integration tests against Python server
         working-directory: desktop/core
@@ -101,12 +93,18 @@ jobs:
         if: failure()
         shell: bash
         run: |
-          echo "=== python ==="; which python3 python || true
-          python3 --version || python --version || true
+          # 诊断步骤尽力收集信息；主测试步骤已用 pipefail 严格失败。
+          set +e
+          echo "=== python ==="
+          command -v python3
+          command -v python
+          python3 --version || python --version
           echo "=== temp dir ==="; echo "$TMPDIR"; ls -ld /tmp
+          echo "=== last 80 lines of test log ==="
+          tail -80 /tmp/rust-test.log
           echo "=== rerun verbose ==="
           cd desktop/core
-          cargo test --release --test integration -- --test-threads=1 --nocapture 2>&1 | tail -60 || true
+          cargo test --release --test integration -- --test-threads=1 --nocapture 2>&1 | tail -60
 
       - name: Upload core artifact
         if: matrix.os == 'windows-latest'

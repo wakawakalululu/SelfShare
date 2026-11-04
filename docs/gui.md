@@ -4,7 +4,7 @@ title: 桌面 GUI
 
 # 桌面 GUI
 
-Flutter 前端 + Rust 同步内核，通过 `dart:ffi` 调用 17 个稳定 C ABI。
+Flutter 前端 + Rust 同步内核，通过 `dart:ffi` 调用 19 个稳定 C ABI。
 
 ```text
 Flutter UI（多挂载 / 进度 / 托盘 / 历史 / 开机自启）

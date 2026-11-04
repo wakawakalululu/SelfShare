@@ -1,3 +1,54 @@
+# [v2.0.0] — 2026-11-04
+
+发布日期：2026-11-04
+发布范围：Go 服务端 `selfshare-server` 2.0.0（5 平台二进制 + Docker 镜像）、Rust + Tauri 客户端源码与构建配置、CI/Release 工作流与文档。
+协议兼容：HTTP `ServiceVersion` 保持 `1.0`，v1 客户端（Python CLI / Rust core / Flutter GUI）可直连；`server.json`、`vault.db`、`blobs/` 等数据目录可原样复用。
+
+## v2：Go 服务端 + Rust/Tauri 客户端收敛
+
+### 部署
+
+- Go 服务端支持单二进制（5 平台交叉编译、`--version`）与 Docker（镜像内置 `HEALTHCHECK`、compose、systemd）。
+- 新增根级 `.github/workflows/ci-v2.yml`：Go 竞态测试 / 多平台构建 / Python 协议兼容 / Docker 冒烟 / Tauri 构建。
+- 删除 `v2/.github/workflows/ci.yml`（GitHub Actions 不会识别嵌套路径）。
+
+### 客户端（Rust + Tauri）
+
+- 补齐设置持久化、P2P 开关、巡检间隔、TLS（直连 HTTPS 服务端）、托盘实时状态与暂停/恢复/一键同步、在线节点列表。
+- 仪表盘接入统计与轮询；设备页支持连接探测、配对令牌复制、节点列表；设置页只暴露真实生效的配置项。
+- 修复前端构建：TypeScript 预处理器、缺失的 `styles.css`、Svelte 4 挂载 API、缺失的 `icon.icns`；生成 `package-lock.json`。
+- 新增 `tests/engine_state.rs`（设置往返、暂停/恢复状态）。
+
+### 服务端（Go）
+
+- 新增配对码 / peers / registry 共 8 个单元测试，Go 测试共 20 项；`go vet` 零问题。
+- 高频 blob / peers 请求改用不打开 SQLite 的轻量句柄：32×256 KiB、16 并发基准首次观测由 12.23 s / 0.65 MB/s 提升到 0.372 s / 21.5 MB/s；同轮受控 A/B 未复现该倍数（见 `v2/RELEASE_SUMMARY.md` §2.2）。
+- 新增 `v2/scripts/bench_upload.py`（并发上传 + 摘要回读校验）。
+
+### 工程与文档
+
+- 补齐 `v2/` 构建产物忽略规则，避免约 8 GB 产物误入库。
+- 重写 `v2/ARCHITECTURE.md`，清理收敛前的过期设计描述；更新 `v2/README.md`、文档站与 wiki 的快速开始。
+
+### 验证结论
+
+- Go 20/20 + `go vet` 0 issue；Python 29（其中 24 项对接真实 Go 二进制）；Rust 内核 18 + Tauri 2；前端 42 模块构建通过。
+- Windows 与 WSL Linux 二进制运行、HTTPS `/api/ping`、并发基准首次观测 0.372 s / 21.5 MB/s（约 33 倍，同轮 A/B 未复现）与 32/32 回读一致均通过。
+- Docker 镜像构建、Linux `go test -race`、Tauri 安装包打包与 Release 发布由 CI 覆盖（本机无 Docker 引擎 / gcc）；详见 `v2/RELEASE_SUMMARY.md`。
+
+### 发布资产与升级
+
+- Release 资产：`dist/*.zip`（v1 便携包与服务端包）+ `dist/v2/selfshare-server-*` 五个平台二进制；Docker 镜像由 `v2/server/Dockerfile` 构建。
+- 升级：停止旧服务端 → 替换二进制或镜像 → 用原 `--root` 数据目录启动；数据格式兼容，无需迁移。
+- 回滚：v1 与 v2 服务端共享磁盘格式，停止 v2 后用同一数据目录启动 v1 服务端即可。
+
+### 工程收尾
+
+- `CHANGELOG.md` 版本锚点改为 `[v2.0.0]`，`release.yml` 的 notes 提取兼容方括号标题，避免回退整份文件。
+- 清理 `v2/superseded/` 早期缺陷实现；统一 CI / Pages 触发分支为 `master`；移除根 `ci.yml` 主流程软失败。
+
+---
+
 # v1.3.0 发布说明
 
 发布日期：2026-11-03
@@ -95,7 +146,7 @@ python selfshare.py watch D:\同步盘 --p2p
 ### 3. Rust 同步内核
 
 - 与 Python 服务端协议完全兼容，可与 Python 客户端混合部署
-- 稳定 C ABI：17 个 `ss_*` 导出，配套 `selfshare_core.h`
+- 稳定 C ABI：19 个 `ss_*` 导出，配套 `selfshare_core.h`
 - 提供独立 CLI（`selfshare-cli`）用于无 GUI 验证
 - 本地状态用原子 JSON 快照，避免 SQLite 的 C 依赖
 

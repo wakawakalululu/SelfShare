@@ -51,3 +51,20 @@ server.env
 .box-agent-scratch/
 .vs/
 .idea/
+
+# v2 / Tauri：本地构建产物可达 GB 级，绝不入库
+**/target/
+**/node_modules/
+v2/server/bin/
+v2/client/dist/
+v2/client/src-tauri/gen/schemas/
+*.o
+*.d
+*.rlib
+*.rmeta
+*.pdb
+*.lib
+*.dll
+*.so
+*.dylib
+*.exe

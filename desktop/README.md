@@ -4,7 +4,7 @@
 
 ```
 Flutter UI / 系统托盘 / 文件夹选择 / 开机自启
-                  │ dart:ffi（17 个稳定 C ABI）
+                  │ dart:ffi（19 个稳定 C ABI）
                   ▼
 Rust Core：扫描、SHA-256、三方合并、冲突副本、watch、HTTP
                   │ 复用既有协议
@@ -59,7 +59,8 @@ powershell -ExecutionPolicy Bypass -File desktop\scripts\build_windows.ps1
 已验证产物：
 
 ```text
-build\windowsdunner\Release  selfshare_desktop.exe      1.7 MB
+build\windowsd
+unner\Release  selfshare_desktop.exe      1.7 MB
   selfshare_core.dll         2.7 MB
   flutter_windows.dll
   datapp.so                5.7 MB （AOT 快照，含全部 ss_* FFI 调用）

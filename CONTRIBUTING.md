@@ -25,6 +25,16 @@ cargo test --release
 cd desktop/app
 flutter analyze
 flutter build windows --release
+
+# v2（Go 服务端 + Tauri 客户端）
+cd v2/server
+go test ./... && go vet ./...
+cd ../client && npm ci && npm run build
+cd src-tauri && cargo build && cargo test --test engine_state
+
+# 并发上传基准（回到仓库根后执行，需先构建 Go 二进制）
+cd ../../../..
+python v2/scripts/bench_upload.py --server v2/server/bin/selfshare-server.exe
 ```
 
 ## 代码约定
