@@ -15,6 +15,10 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   PYTHONUNBUFFERED: '1'
+  # Windows runner 默认 stdout 非 UTF-8，CLI 的中文提示（selfshare/cli.py:104）会抛
+  # UnicodeEncodeError 并让 CLI smoke 失败；固定编码后无需再用 || true 掩盖。
+  PYTHONIOENCODING: 'utf-8'
+  PYTHONUTF8: '1'
 
 jobs:
   python:
