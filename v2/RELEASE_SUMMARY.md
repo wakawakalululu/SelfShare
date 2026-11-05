@@ -6,7 +6,7 @@
 | 版本 | 服务端 `2.0.0`（`--version`）；HTTP `ServiceVersion` 保持 `1.0` 以兼容 v1 客户端 |
 | 记录日期 | 2026-11-04（2026-11-05 推送与 CI 复核更新） |
 | 基线 | `master` `42d67645af534c5eec3c43668311604616381745`；`v1.3.0` tag `714e9ee91cfe0e69ad9fb25e4c3fdc9a37f36d85` |
-| 当前状态 | `master` 已推送至 `1c8559c`（5 个原子提交）；`v2.0.0` 附注标签已推送（`refs/tags/v2.0.0` → `8aa9667`）；Pages 成功、CI v2 主要 job 成功、Release 工作流运行中；根 CI 的 Windows Python job 因 stdout 编码失败，已在后续提交修复 |
+| 当前状态 | `master` 与 `v2.0.0` 附注标签均已推送；**v2.0.0 Release 已发布成功（7 个资产）**；Pages 与 CI v2 主要 job 成功；根 CI Windows Python job 的编码失败已修复并推送，最新 CI 复跑进行中 |
 | 数据来源 | 本机命令输出 + GitHub Actions / Releases API；对照 `v2/README.md`「验证状态」、`PROJECT_STATUS.md` §1.1.1、`CHANGELOG.md` `[v2.0.0]` |
 
 ---
@@ -204,6 +204,12 @@ docker run -d --name selfshare -p 8585:8585 -v selfshare-data:/data \
 | GitHub Pages 文档站 | 需推送触发 | `pages.yml` | **success**（deploy 与 pages build and deployment 均成功） |
 | Git 提交 / 推送 | 曾因凭据认证失败，凭据更新后恢复 | 不适用 | **已完成**：5 个提交推送到 `origin/master`，`v2.0.0` 附注标签推送成功 |
 | 根 CI 的 Windows Python job | `CLI smoke` 中文提示在非 UTF-8 stdout 下抛 `UnicodeEncodeError` | 根 `ci.yml` | 首次运行 **failure**（py3.10 / py3.12）；已在 `ci.yml` 顶层加 `PYTHONIOENCODING=utf-8` / `PYTHONUTF8=1` 修复，待复跑 |
+
+**2026-11-05 06:59 更新**：`release.yml` 三个 job 全部 success，`v2.0.0` Release 已发布；资产为
+`SelfShare-2.0.0-windows-x64.zip`、`selfshare-server-2.0.0.zip` 与 5 个 `selfshare-server-<os>-<arch>`；
+Release notes 共 51 行，取自 `CHANGELOG.md` 的 `# [v2.0.0]` 小节，不含 `v1.3.0` 标题。
+根 CI 的编码修复与状态记录已推送，最新 CI 复跑进行中；`v2.0.0` tag 仍指向 `1c8559c`，
+后续修复不进入已发布资产。
 
 ### 4.2 剩余风险
 
