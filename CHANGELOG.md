@@ -114,6 +114,15 @@ README 从 210 行精简到 100 行，三步快速开始放在最顶部。
 | Windows GUI 构建与冒烟 | 通过 |
 | GitHub Actions | 7/7 全绿 |
 
+# v1.2.0 发布说明
+
+发布日期：2026-11-03（tag `baddac95`，指向提交 `27c3a25`）
+
+- P2P 数据面扩展到 Python 与 Rust 两侧，GUI 接入 P2P 开关并完成 Windows 构建验证（提交 `b698089`、`1a5c1d3`、`27c3a25`；tag 附注：`P2P on both Python and Rust, GUI P2P toggle, verified Windows build`）。
+- 该版本发布时未在本文件记录条目；以上依据 tag 附注与提交历史补写，用于补齐版本锚点，避免 `release.yml` 提取 notes 时回退整份 CHANGELOG。
+
+---
+
 # v1.1.0 发布说明
 
 发布日期：2026-11-02
