@@ -22,14 +22,16 @@
 | R1 | 已修复 | 根 `.gitignore` 补齐 `**/target/`、node_modules、`v2/server/bin/`、二进制扩展名等规则 |
 | R2 | 已修复 | 新增根 `.github/workflows/ci-v2.yml`（Go 竞态测试、5 平台构建、协议兼容、Docker 冒烟、Tauri 构建），删除嵌套的无效工作流 |
 | R3 | 已修复 | 补 `src/styles.css`、Svelte TS 预处理器、Svelte 4 挂载 API、移除缺失的 `icon.icns`；前端构建通过 |
-| R4 | 已解除 | `origin/master` 已推送至 `1c8559c`（5 个原子提交），`v2.0.0` 附注标签已推送；CI / Pages / Release 均已触发。凭据更新后 `git push origin v2.0.0` 成功 |
+| R4 | 已解除 | `origin/master` 已推送至 `6768cd3`，`v2.0.0` 附注标签已推送；CI / CI v2 / Pages / Release 全部 success |
 | R5 | 已修复 | 客户端启用 `selfshare-core/tls` 与 ureq TLS；P2P 由设置开关驱动（不再写死关闭）；HTTPS 端点实测通过 |
-| R8 / R9 | 部分修复 | 文档站与 wiki 快速开始更新；`v2/ARCHITECTURE.md` 重写；测试数 / C ABI 口径仍待统一 |
-| R10 | 部分修复 | 新增 8 个 Go 单测、并发基准、Linux/Windows 二进制与 HTTPS 实测；Docker / `-race` 交由 CI |
+| R8 / R9 | 已修复 | 文档站与 wiki 快速开始更新；`v2/ARCHITECTURE.md` 重写；测试数 / C ABI 口径已统一 |
+| R10 | 已修复 | 新增 8 个 Go 单测、并发基准、Linux/Windows 二进制与 HTTPS 实测；Docker 镜像构建与 `go test -race` 已由 CI 通过 |
 | R11 | 已修复 | 设置持久化、托盘暂停/恢复/一键同步与实时 tooltip、在线节点列表、未接线 IPC 已接入前端 |
 | R12 | 已修复 | 生成 `package-lock.json`；根 `ci.yml` 主流程软失败移除；`ci.yml` / `ci-v2.yml` / `pages.yml` 触发分支统一为 `master`；远程 `origin/main` 归档待人工 |
 | R7 | 已修复 | 删除 `v2/superseded/`（13 文件 / 14.66 MB），并同步 `v2/README.md`、`v2/ARCHITECTURE.md`、`CHANGELOG.md` 的引用 |
-| 发布阻塞点 | 已修复 | `CHANGELOG.md` 锚点改为 `# [v2.0.0]`；`release.yml` notes 提取兼容方括号标题、只在一级版本标题处停止，本机验证提取 50 行且不含 v1.3.0；输入示例改 `v2.0.0` |
+| 发布阻塞点 | 已修复 | `CHANGELOG.md` 锚点改为 `# [v2.0.0]`；`release.yml` notes 提取改用 `index()` 定位、只在一级标题停止，两种 awk 实现均提取 50 行且不含 v1.3.0；输入示例改 `v2.0.0`；已依据 tag 附注补写 `# v1.2.0` 小节 |
+| 发布状态 | 已完成 | `v2.0.0` Release 发布 7 个资产、notes 51 行；CI / CI v2 / Pages 全绿；`origin/main` 仅含 `78d0293 Initial commit`，无独有内容 |
+| refspec 歧义 | 部分处理 | 本地 tag `master` 已删除，`refs/heads/master` 不再歧义；远程 `refs/tags/master` 待人工删除，推送可固定写 `refs/heads/master:refs/heads/master` |
 
 **运行测试汇总**：Go 20 项 + `go vet` 全绿；Python 兼容套件对接真实 Go 二进制 19 + 5 全绿；
 Rust 内核 18 + Tauri 状态测试 2 全绿；`npm ci` / `npm run build` / `cargo build` 通过；

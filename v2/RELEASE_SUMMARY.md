@@ -197,57 +197,58 @@ docker run -d --name selfshare -p 8585:8585 -v selfshare-data:/data \
 | --- | --- | --- | --- |
 | Docker 镜像构建与容器内 HEALTHCHECK | 本机与 WSL 均无 Docker 引擎；仅验证 `wget` 等价命令 | `ci-v2.yml` → `docker` | **success**：`docker build` + `docker run` + `/api/ping` 冒烟通过 |
 | Linux 竞态检测 `go test -race` | Windows 侧无 gcc / cgo | `ci-v2.yml` → `server-test` | **success**：race 无告警、vet 0 issue |
-| Tauri 安装包打包（NSIS / MSI） | 本机只执行 `cargo build` | `ci-v2.yml` → `client` | 运行中（`npm ci` → `npm run build` → `npm run tauri build`） |
-| `npm ci` 可复现安装 | 本机用 `npm install` 生成 lock | `ci-v2.yml` → `client` | 由同一 job 覆盖，运行中 |
+| Tauri 安装包打包（NSIS / MSI） | 本机只执行 `cargo build` | `ci-v2.yml` → `client` | **success**：`npm ci` → `npm run build` → `npm run tauri build` 完成并上传 exe artifact |
+| `npm ci` 可复现安装 | 本机用 `npm install` 生成 lock | `ci-v2.yml` → `client` | **success**（同一 job 内通过） |
 | 5 平台二进制运行 | 仅 Windows amd64 与 WSL linux/amd64 实测 | `ci-v2.yml` → `server-build`、`release.yml` → `v2-server-assets` | 5 个交叉编译 job **全部 success**；linux/arm64、darwin 双架构实机运行仍待人工 |
-| Release 发布流程 | 需 tag 或 `workflow_dispatch` + 推送 | `release.yml` → `windows-bundle` / `v2-server-assets` / `publish` | `v2.0.0` tag push 已触发；两个构建 job 运行中，`publish` 待执行 |
+| Release 发布流程 | 需 tag 或 `workflow_dispatch` + 推送 | `release.yml` → `windows-bundle` / `v2-server-assets` / `publish` | **success**：3 个 job 全绿，`v2.0.0` Release 已发布，7 个资产、notes 51 行 |
 | GitHub Pages 文档站 | 需推送触发 | `pages.yml` | **success**（deploy 与 pages build and deployment 均成功） |
-| Git 提交 / 推送 | 曾因凭据认证失败，凭据更新后恢复 | 不适用 | **已完成**：5 个提交推送到 `origin/master`，`v2.0.0` 附注标签推送成功 |
-| 根 CI 的 Windows Python job | `CLI smoke` 中文提示在非 UTF-8 stdout 下抛 `UnicodeEncodeError` | 根 `ci.yml` | 首次运行 **failure**（py3.10 / py3.12）；已在 `ci.yml` 顶层加 `PYTHONIOENCODING=utf-8` / `PYTHONUTF8=1` 修复，待复跑 |
+| Git 提交 / 推送 | 曾因凭据认证失败，凭据更新后恢复 | 不适用 | **已完成**：`master` 与 `v2.0.0` 附注标签均已推送 |
+| 根 CI 的 Windows Python job | `CLI smoke` 中文提示在非 UTF-8 stdout 下抛 `UnicodeEncodeError` | 根 `ci.yml` | 首次 **failure**；加 `PYTHONIOENCODING=utf-8` / `PYTHONUTF8=1` 后，最新运行 **7/7 job success**（含 Windows GUI build） |
 
-**2026-11-05 06:59 更新**：`release.yml` 三个 job 全部 success，`v2.0.0` Release 已发布；资产为
-`SelfShare-2.0.0-windows-x64.zip`、`selfshare-server-2.0.0.zip` 与 5 个 `selfshare-server-<os>-<arch>`；
-Release notes 共 51 行，取自 `CHANGELOG.md` 的 `# [v2.0.0]` 小节，不含 `v1.3.0` 标题。
-根 CI 的编码修复与状态记录已推送，最新 CI 复跑进行中；`v2.0.0` tag 仍指向 `1c8559c`，
+**最终 CI 结论（2026-11-05）**：`CI`（run `41984388379`）与 `CI v2`（run `41984388385`）均
+`completed/success`；`Pages` / `Release` 亦 success。同分支前一次运行被 `concurrency` 取消（cancelled）；
+tag `v2.0.0` 触发的根 CI 仍为历史 failure（tag 指向修复前提交 `1c8559c`），不影响已发布资产。
+
+**2026-11-05 06:59 更新**：`v2.0.0` Release 资产为 `SelfShare-2.0.0-windows-x64.zip`、
+`selfshare-server-2.0.0.zip` 与 5 个 `selfshare-server-<os>-<arch>`；Release notes 共 51 行，
+取自 `CHANGELOG.md` 的 `# [v2.0.0]` 小节，不含 `v1.3.0` 标题。`v2.0.0` tag 仍指向 `1c8559c`，
 后续修复不进入已发布资产。
 
 ### 4.2 剩余风险
 
 | 编号 | 风险 | 现状 | 处置建议 |
 | --- | --- | --- | --- |
-| R-A | `master` 与 `origin/main` 指向不同提交（分叉） | **已处理（CI 口径）**：`ci.yml` / `ci-v2.yml` / `pages.yml` 的 `branches` 统一为 `[master]`；`origin/main` 仍指向 `78d0293` | 待人工：推送后确认 `main` 无使用者，再 `git push origin --delete main` 或合并归档；主分支口径以 `master` 为准 |
+| R-A | `master` 与 `origin/main` 指向不同提交（分叉） | **已处理（CI 口径）**：`ci.yml` / `ci-v2.yml` / `pages.yml` 的 `branches` 统一为 `[master]`。分叉分析：`origin/main` 仅含 `78d0293 Initial commit`，无独有功能；`master` 相对其新增 97 文件 / 13383 行 | 待人工：确认 `main` 无使用者后 `git push origin --delete main`；主分支口径以 `master` 为准 |
 | R-B | `v2/superseded/server/` 保留早期 chi 实现（配对码空指针、peers stub），且自带 go.mod/Makefile/Dockerfile | **已处理**：目录已删除（13 文件 / 14.66 MB）；`v2/README.md`、`v2/ARCHITECTURE.md`、`CHANGELOG.md` 引用已同步 | 已完成；复核提交中的删除记录 |
-| R-C | 根 `ci.yml` 存在 `\|\| true` / `set +e` 软失败 | **已处理**：CLI smoke 去掉 `\|\| true`；Rust 测试改用 `set -o pipefail`；诊断步骤显式 `set +e`。CI 复验发现 Windows Python job 因 `selfshare/cli.py:104` 中文提示 + 非 UTF-8 stdout 抛 `UnicodeEncodeError` | 已在 `ci.yml` 顶层加 `PYTHONIOENCODING=utf-8` / `PYTHONUTF8=1`，保持严格失败；待新推送复跑 |
-| R-D | `CHANGELOG.md` 缺 `v1.2.0` 小节；`release.yml` 输入示例为 `v1.2.0`；顶部为 `# [Unreleased]` | **已处理（v2.0.0）**：锚点改为 `# [v2.0.0] — 2026-11-04` 并补全小节；awk 兼容方括号标题、只在一级版本标题处停止，本机验证提取 50 行（含 4 个小节与性能数据）且不含 v1.3.0 标题；输入示例改 `v2.0.0` | `v1.2.0` 历史小节仍缺：若需重发该 tag（tag `baddac95`），须先补写，否则 notes 回退整份文件；不影响 v2.0.0 |
+| R-C | 根 `ci.yml` 存在 `\|\| true` / `set +e` 软失败 | **已处理并复验**：CLI smoke 去掉 `\|\| true`；Rust 测试改用 `set -o pipefail`；诊断步骤显式 `set +e`。CI 复验发现 Windows Python job 因 `selfshare/cli.py:104` 中文提示 + 非 UTF-8 stdout 抛 `UnicodeEncodeError` | 已加 `PYTHONIOENCODING=utf-8` / `PYTHONUTF8=1` 并保持严格失败；最新 CI 运行 7/7 job success，无需再处理 |
+| R-D | `CHANGELOG.md` 缺 `v1.2.0` 小节；`release.yml` 输入示例为 `v1.2.0`；顶部为 `# [Unreleased]` | **已处理**：锚点改为 `# [v2.0.0] — 2026-11-04` 并补全小节；awk 改用 `index()` 匹配、只在一级标题停止，两种 awk 实现均提取 50 行且不含 v1.3.0 标题；输入示例改 `v2.0.0`；已依据 tag 附注与提交历史补写 `# v1.2.0` 小节 | 已完成；重发 `v1.2.0` 时 notes 不再回退整份文件 |
 | R-E | `ServiceVersion "1.0"` 与发行版本 `2.0.0` 并存 | 有意保持协议兼容，但易误解 | 文档已区分；API 变更时再提升协议版本 |
 | R-F | P2P 默认关闭，且仅支持局域网直连（中心服务端做节点发现与 HMAC 授权） | 设置在 GUI 中开启后生效；无 NAT 穿透/中继 | 如需公网直连，后续补穿透或中继 |
 | R-G | 单文件上限 2 GiB、整文件重传、不支持多段 Range；ACL/符号链接/空目录不保留 | v1 既有设计，v2 沿用 | 列入产品迭代，不阻塞本次发布 |
-| R-H | CI 依赖外部资源（setup-go/setup-node、`npm ci`、Docker Hub 基础镜像、WiX/NSIS 下载） | 本机验证均为离线缓存 | 首次 CI 运行需关注网络与下载失败 |
-| R-I | Tauri 客户端仅 Windows 安装包由 CI 产出；macOS / Linux 客户端无构建与发布 | `ci-v2.yml/client` 固定 `windows-latest` | 后续扩展平台矩阵并接入 Release |
-| R-J | `v2/client/src-tauri/gen/schemas/`、`dist/`、`bin/` 等生成物已被忽略但本地仍存在 | 不会入库 | 保持忽略规则；提交时勿使用 `git add -A` |
+| R-H | CI 依赖外部资源（setup-go/setup-node、`npm ci`、Docker Hub 基础镜像、WiX/NSIS 下载） | 本机验证均为离线缓存 | CI 实跑全部成功，风险已释放 |
+| R-I | Tauri 客户端仅 Windows 安装包由 CI 产出；macOS / Linux 客户端无构建与发布 | `ci-v2.yml/client` 已 success 并上传 exe artifact，但 `release.yml` 未包含该资产 | 后续把客户端安装包接入 Release，并扩展 macOS / Linux 平台矩阵 |
+| R-J | `v2/client/src-tauri/gen/schemas/`、`dist/`、`bin/` 等生成物已被忽略但本地仍存在 | 不会入库（`git ls-files` 校验 0 命中） | 保持忽略规则；提交时勿使用 `git add -A` |
+| R-K | 仓库存在与分支同名的 tag `master`，导致 `git push origin master` 报 `src refspec master matches more than one` | 本地 tag 已删除（`refs/heads/master` 不再歧义）；远程 `refs/tags/master`（`176710f`）仍在 | 待人工：确认无依赖后 `git push origin :refs/tags/master`；推送也可固定写 `refs/heads/master:refs/heads/master` |
 
 ---
 
 ## 5. 后续建议
 
-### P0：推送后立即确认
+### P0：推送后确认（已完成）
 
-1. `ci-v2.yml` 五个 job 全绿：
-   - `server-test`：`go test -race ./...` 无竞态、`go vet` 0 issue；
-   - `server-build`：5 个平台各产出二进制并上传 artifact；
-   - `compat`：Python `test_sync.py`（19）与 `test_p2p.py`（5）对接 Go 二进制通过；
-   - `docker`：镜像构建成功、容器 `/api/ping` 返回 `engine: go`、`docker logs` 无异常；
-   - `client`：`npm ci` + `npm run build` + `npm run tauri build` 通过，NSIS/MSI exe 产物上传。
-2. `pages.yml` 文档站发布成功，快速开始页与 wiki 已更新为配对流程。
-3. 演练 `release.yml`：用 `workflow_dispatch` 或打 `v2.0.0` tag，确认 `dist/*.zip`（v1）与 `dist/v2/selfshare-server-*`（v2 5 平台）齐全、Release notes 取自正确章节。notes 提取已在本机复验（50 行、含 4 个小节、不含 v1.3.0 标题），R-D 的 v2.0.0 部分无需再处理。
-4. 在具备 Git 的环境完成提交与推送；结果见文首状态栏与 §4.1「Git 提交 / 推送」行。按 `PROJECT_STATUS.md` §5.2 使用显式路径暂存（勿 `git add -A`），确认无 `target/`、`node_modules/`、`bin/` 入库。
+1. 【已完成】`ci-v2.yml` 五个 job 全绿（run `41984388385`）：`server-test` race/vet、`server-build` 5 平台、`compat` 24 项 Python 套件、`docker` 镜像与 `/api/ping` 冒烟、`client` NSIS/MSI 打包。
+2. 【已完成】`pages.yml` 文档站发布成功，快速开始页与 wiki 已更新为配对流程。
+3. 【已完成】`release.yml`（tag `v2.0.0`）三个 job 全绿，Release 发布 7 个资产、notes 51 行取自 `# [v2.0.0]` 小节。
+4. 【已完成】根 `ci.yml`（run `41984388379`）7/7 job success；Windows Python 编码缺陷已修复并复验，未恢复 `\|\| true`。
+5. 【已完成】提交与推送：`master` 与 `v2.0.0` 附注标签均已推送，工作区干净，`git ls-files` 无构建产物。
+6. 待人工：tag `v2.0.0` 触发的历史 CI 失败记录（tag 指向修复前提交），可在 Actions 中忽略，或用 `workflow_dispatch` 对最新代码重跑。
 
-### P1：发布前收尾
+### P1：发布后收尾
 
 5. 【已完成】删除 `v2/superseded/`（13 文件 / 14.66 MB），并同步 `v2/README.md`、`v2/ARCHITECTURE.md`、`CHANGELOG.md` 的引用（R-B）。
-6. 【已完成】统一 `ci.yml` / `ci-v2.yml` / `pages.yml` 触发分支为 `[master]`（R-A）；远程 `origin/main` 归档仍需人工执行。
+6. 【已完成】统一 `ci.yml` / `ci-v2.yml` / `pages.yml` 触发分支为 `[master]`（R-A）；分叉分析确认 `origin/main` 无独有内容，归档仍需人工执行。
 7. 在 linux/arm64、darwin/amd64、darwin/arm64、windows/amd64 上分别运行二进制并做 `/api/ping` 与一次 `pair` → `sync` 冒烟（§4.1 第 5 项）。
-8. 【已完成】移除根 `ci.yml` 主流程软失败（R-C）；`release.yml` 输入示例与 notes 提取已修复（R-D）；`v1.2.0` 历史小节仍缺，需重发该 tag 时补写。
+8. 【已完成】移除根 `ci.yml` 主流程软失败（R-C）；`release.yml` 输入示例与 notes 提取已修复，并补齐 `# v1.2.0` 小节（R-D）；本地同名 tag `master` 已删除（R-K）。
 
 ### P2：后续迭代
 
