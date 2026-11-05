@@ -22,7 +22,7 @@
 | R1 | 已修复 | 根 `.gitignore` 补齐 `**/target/`、node_modules、`v2/server/bin/`、二进制扩展名等规则 |
 | R2 | 已修复 | 新增根 `.github/workflows/ci-v2.yml`（Go 竞态测试、5 平台构建、协议兼容、Docker 冒烟、Tauri 构建），删除嵌套的无效工作流 |
 | R3 | 已修复 | 补 `src/styles.css`、Svelte TS 预处理器、Svelte 4 挂载 API、移除缺失的 `icon.icns`；前端构建通过 |
-| R4 | 部分解除 | `git` CLI 已可用；4 个原子提交完成（`746edf3` … `982138d`），`git push origin master` 因 GitHub 凭据认证失败返回 128（本地 `ahead 4`），需人工更新 PAT 或改用 SSH 后重推 |
+| R4 | 已解除 | `origin/master` 已推送至 `1c8559c`（5 个原子提交），`v2.0.0` 附注标签已推送；CI / Pages / Release 均已触发。凭据更新后 `git push origin v2.0.0` 成功 |
 | R5 | 已修复 | 客户端启用 `selfshare-core/tls` 与 ureq TLS；P2P 由设置开关驱动（不再写死关闭）；HTTPS 端点实测通过 |
 | R8 / R9 | 部分修复 | 文档站与 wiki 快速开始更新；`v2/ARCHITECTURE.md` 重写；测试数 / C ABI 口径仍待统一 |
 | R10 | 部分修复 | 新增 8 个 Go 单测、并发基准、Linux/Windows 二进制与 HTTPS 实测；Docker / `-race` 交由 CI |

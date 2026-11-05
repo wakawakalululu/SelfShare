@@ -4,10 +4,10 @@
 | --- | --- |
 | 适用对象 | 项目维护者与贡献者 |
 | 版本 | 服务端 `2.0.0`（`--version`）；HTTP `ServiceVersion` 保持 `1.0` 以兼容 v1 客户端 |
-| 记录日期 | 2026-11-04 |
+| 记录日期 | 2026-11-04（2026-11-05 推送与 CI 复核更新） |
 | 基线 | `master` `42d67645af534c5eec3c43668311604616381745`；`v1.3.0` tag `714e9ee91cfe0e69ad9fb25e4c3fdc9a37f36d85` |
-| 当前状态 | 本机开发与验证完成；4 个原子提交已生成（`746edf3`、`d379401`、`2f1c63c`、`982138d`），推送因 GitHub 凭据认证失败未完成（本地 `ahead 4`）；CI / Release 待推送后复验 |
-| 数据来源 | 本机命令输出；对照 `v2/README.md`「验证状态」、`PROJECT_STATUS.md` §1.1.1、`CHANGELOG.md` `[Unreleased]` |
+| 当前状态 | `master` 已推送至 `1c8559c`（5 个原子提交）；`v2.0.0` 附注标签已推送（`refs/tags/v2.0.0` → `8aa9667`）；Pages 成功、CI v2 主要 job 成功、Release 工作流运行中；根 CI 的 Windows Python job 因 stdout 编码失败，已在后续提交修复 |
+| 数据来源 | 本机命令输出 + GitHub Actions / Releases API；对照 `v2/README.md`「验证状态」、`PROJECT_STATUS.md` §1.1.1、`CHANGELOG.md` `[v2.0.0]` |
 
 ---
 
@@ -193,16 +193,17 @@ docker run -d --name selfshare -p 8585:8585 -v selfshare-data:/data \
 
 ### 4.1 因环境限制未实测的项目
 
-| 项目 | 本机限制 | 覆盖方 | 推送后确认点 |
+| 项目 | 本机限制 | 覆盖方 | 推送后实测结论（2026-11-05） |
 | --- | --- | --- | --- |
-| Docker 镜像构建与容器内 HEALTHCHECK | 本机与 WSL 均无 Docker 引擎；仅验证了 `wget /api/ping` 等价命令 | `.github/workflows/ci-v2.yml` → `docker` job（`docker build` + `docker run` + `/api/ping` 冒烟 + `docker logs`） | 镜像层构建成功、容器 `healthy`、非 root 用户可写 `/data` |
-| Linux 竞态检测 `go test -race` | Windows 侧无 gcc / cgo（工具链为 `CGO_ENABLED=0`） | `ci-v2.yml` → `server-test` job（ubuntu-latest，`go test -race ./...` + `go vet ./...`） | race 无告警、vet 0 issue |
-| Tauri 安装包打包（NSIS / MSI） | 本机只执行 `cargo build`，未跑 `npm run tauri build`（需下载 WiX/NSIS 工具链） | `ci-v2.yml` → `client` job（windows-latest，`npm ci` → `npm run build` → `npm run tauri build`） | 产出 `target/release/bundle/**/*.exe` 且 artifact 上传成功 |
-| `npm ci` 可复现安装 | 本机用 `npm install` 生成 `package-lock.json`，未执行 `npm ci` | `ci-v2.yml` → `client` job | lock 文件与 `package.json` 一致，安装无缺失 |
-| 5 平台二进制运行 | 仅 Windows amd64 与 WSL linux/amd64 实测运行；CI 只做交叉编译不运行 | `ci-v2.yml` → `server-build` job（5 目标矩阵）+ `release.yml` → `v2-server-assets` | 产物齐全、体积正常；linux/arm64、darwin 双架构需人工在目标机验证 |
-| Release 发布流程 | 需要 tag 或 `workflow_dispatch` 且必须先推送 | `release.yml` → `windows-bundle`（v1）、`v2-server-assets`（v2 5 平台）、`publish`（合并资产 + CHANGELOG notes） | `dist/*.zip` 与 `dist/v2/selfshare-server-*` 均在 Release 资产中 |
-| GitHub Pages 文档站 | `docs/`、`wiki` 改动需推送触发 | `.github/workflows/pages.yml` | 文档站构建发布成功、快速开始页面为 v1.3.0 配对流程 |
-| Git 提交 / 推送 | 4 个原子提交已完成、工作区干净；`git push origin master` 返回 128（`Invalid username or token. Password authentication is not supported`），本地 `ahead 4` | **无 CI 覆盖，需人工** | 在凭据管理器更新 GitHub PAT（或改用 SSH）后重跑 `git push origin master`；推送成功才会触发 CI / Pages / Release |
+| Docker 镜像构建与容器内 HEALTHCHECK | 本机与 WSL 均无 Docker 引擎；仅验证 `wget` 等价命令 | `ci-v2.yml` → `docker` | **success**：`docker build` + `docker run` + `/api/ping` 冒烟通过 |
+| Linux 竞态检测 `go test -race` | Windows 侧无 gcc / cgo | `ci-v2.yml` → `server-test` | **success**：race 无告警、vet 0 issue |
+| Tauri 安装包打包（NSIS / MSI） | 本机只执行 `cargo build` | `ci-v2.yml` → `client` | 运行中（`npm ci` → `npm run build` → `npm run tauri build`） |
+| `npm ci` 可复现安装 | 本机用 `npm install` 生成 lock | `ci-v2.yml` → `client` | 由同一 job 覆盖，运行中 |
+| 5 平台二进制运行 | 仅 Windows amd64 与 WSL linux/amd64 实测 | `ci-v2.yml` → `server-build`、`release.yml` → `v2-server-assets` | 5 个交叉编译 job **全部 success**；linux/arm64、darwin 双架构实机运行仍待人工 |
+| Release 发布流程 | 需 tag 或 `workflow_dispatch` + 推送 | `release.yml` → `windows-bundle` / `v2-server-assets` / `publish` | `v2.0.0` tag push 已触发；两个构建 job 运行中，`publish` 待执行 |
+| GitHub Pages 文档站 | 需推送触发 | `pages.yml` | **success**（deploy 与 pages build and deployment 均成功） |
+| Git 提交 / 推送 | 曾因凭据认证失败，凭据更新后恢复 | 不适用 | **已完成**：5 个提交推送到 `origin/master`，`v2.0.0` 附注标签推送成功 |
+| 根 CI 的 Windows Python job | `CLI smoke` 中文提示在非 UTF-8 stdout 下抛 `UnicodeEncodeError` | 根 `ci.yml` | 首次运行 **failure**（py3.10 / py3.12）；已在 `ci.yml` 顶层加 `PYTHONIOENCODING=utf-8` / `PYTHONUTF8=1` 修复，待复跑 |
 
 ### 4.2 剩余风险
 
@@ -210,7 +211,7 @@ docker run -d --name selfshare -p 8585:8585 -v selfshare-data:/data \
 | --- | --- | --- | --- |
 | R-A | `master` 与 `origin/main` 指向不同提交（分叉） | **已处理（CI 口径）**：`ci.yml` / `ci-v2.yml` / `pages.yml` 的 `branches` 统一为 `[master]`；`origin/main` 仍指向 `78d0293` | 待人工：推送后确认 `main` 无使用者，再 `git push origin --delete main` 或合并归档；主分支口径以 `master` 为准 |
 | R-B | `v2/superseded/server/` 保留早期 chi 实现（配对码空指针、peers stub），且自带 go.mod/Makefile/Dockerfile | **已处理**：目录已删除（13 文件 / 14.66 MB）；`v2/README.md`、`v2/ARCHITECTURE.md`、`CHANGELOG.md` 引用已同步 | 已完成；复核提交中的删除记录 |
-| R-C | 根 `ci.yml` 存在 `\|\| true` / `set +e` 软失败 | **已处理**：CLI smoke 去掉 `\|\| true`（本机验证空目录退出码为 0）；Rust 测试改用 `set -o pipefail` 严格失败；诊断步骤显式 `set +e` 且不覆盖失败结论 | 已完成，待 CI 复验 |
+| R-C | 根 `ci.yml` 存在 `\|\| true` / `set +e` 软失败 | **已处理**：CLI smoke 去掉 `\|\| true`；Rust 测试改用 `set -o pipefail`；诊断步骤显式 `set +e`。CI 复验发现 Windows Python job 因 `selfshare/cli.py:104` 中文提示 + 非 UTF-8 stdout 抛 `UnicodeEncodeError` | 已在 `ci.yml` 顶层加 `PYTHONIOENCODING=utf-8` / `PYTHONUTF8=1`，保持严格失败；待新推送复跑 |
 | R-D | `CHANGELOG.md` 缺 `v1.2.0` 小节；`release.yml` 输入示例为 `v1.2.0`；顶部为 `# [Unreleased]` | **已处理（v2.0.0）**：锚点改为 `# [v2.0.0] — 2026-11-04` 并补全小节；awk 兼容方括号标题、只在一级版本标题处停止，本机验证提取 50 行（含 4 个小节与性能数据）且不含 v1.3.0 标题；输入示例改 `v2.0.0` | `v1.2.0` 历史小节仍缺：若需重发该 tag（tag `baddac95`），须先补写，否则 notes 回退整份文件；不影响 v2.0.0 |
 | R-E | `ServiceVersion "1.0"` 与发行版本 `2.0.0` 并存 | 有意保持协议兼容，但易误解 | 文档已区分；API 变更时再提升协议版本 |
 | R-F | P2P 默认关闭，且仅支持局域网直连（中心服务端做节点发现与 HMAC 授权） | 设置在 GUI 中开启后生效；无 NAT 穿透/中继 | 如需公网直连，后续补穿透或中继 |
