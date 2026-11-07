@@ -184,6 +184,72 @@ jobs:
           name: v2-client-bundle
           path: dist/v2
 
+      - name: Verify downloaded release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          inventory() { find dist -type f -printf '%p %s bytes\n' | sort; }
+          echo "--- downloaded asset inventory ---"
+          inventory
+
+          # 精确集合：2 便携/服务端包 zip + 5 平台服务端二进制 + 1 NSIS 安装包 = 8
+          mapfile -t zips < <(find dist -maxdepth 1 -type f -name '*.zip' | sort)
+          mapfile -t servers < <(find dist/v2 -maxdepth 1 -type f -name 'selfshare-server-*' | sort)
+          mapfile -t installers < <(find dist/v2 -maxdepth 1 -type f -name 'SelfShare_*.exe' | sort)
+
+          fail=0
+          [ "${#zips[@]}" -eq 2 ] || { echo "::error::expected 2 dist/*.zip assets, got ${#zips[@]}"; fail=1; }
+          [ "${#servers[@]}" -eq 5 ] || { echo "::error::expected 5 dist/v2/selfshare-server-* assets, got ${#servers[@]}"; fail=1; }
+          [ "${#installers[@]}" -eq 1 ] || { echo "::error::expected 1 dist/v2/SelfShare_*.exe asset, got ${#installers[@]}"; fail=1; }
+          total=$(( ${#zips[@]} + ${#servers[@]} + ${#installers[@]} ))
+          [ "$total" -eq 8 ] || { echo "::error::expected 8 assets in total, got $total"; fail=1; }
+          [ "$fail" -eq 0 ] || { echo "--- inventory on failure ---"; inventory; exit 1; }
+
+          # 每个文件必须存在且非空（-s）
+          for f in "${zips[@]}" "${servers[@]}" "${installers[@]}"; do
+            if [ ! -s "$f" ]; then
+              echo "::error::missing or empty asset: $f"
+              fail=1
+            fi
+          done
+          [ "$fail" -eq 0 ] || { echo "--- inventory on failure ---"; inventory; exit 1; }
+
+          # linux/amd64 二进制可运行冒烟：chmod +x 后 --version 必须包含 2.0.0
+          bin="dist/v2/selfshare-server-linux-amd64"
+          chmod +x "$bin"
+          version_output="$("$bin" --version 2>&1)"
+          echo "--- $bin --version ---"
+          echo "$version_output"
+          case "$version_output" in
+            *2.0.0*) ;;
+            *) echo "::error::$bin --version did not contain 2.0.0"; exit 1 ;;
+          esac
+
+          # 便携包 zip 内必须含 selfshare_core.dll（Compress-Archive 带 SelfShare/ 前缀，按 basename 匹配）
+          portable=""
+          for z in "${zips[@]}"; do
+            case "$(basename "$z")" in
+              SelfShare-*-windows-x64.zip) portable="$z" ;;
+            esac
+          done
+          [ -n "$portable" ] || { echo "::error::SelfShare-*-windows-x64.zip not found among downloaded zips"; exit 1; }
+          python3 -c '
+          import sys, zipfile
+          path = sys.argv[1]
+          with zipfile.ZipFile(path) as zf:
+              names = zf.namelist()
+          print("--- entries in " + path + " ---")
+          for n in names:
+              print(n)
+          normalized = [n.replace("\\", "/").rsplit("/", 1)[-1] for n in names]
+          if "selfshare_core.dll" not in normalized:
+              sys.exit("::error::selfshare_core.dll missing in " + path)
+          print("selfshare_core.dll present in " + path)
+          ' "$portable"
+
+          echo "All 8 release assets verified (2 zip + 5 server binaries + 1 installer)."
+
       - name: Extract release notes from CHANGELOG
         id: notes
         run: |

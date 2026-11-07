@@ -128,6 +128,30 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  verify-client-dist:
+    name: Verify downloaded frontend artifact
+    runs-on: ubuntu-latest
+    needs: build-frontend
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: client-dist-${{ github.sha }}
+          path: client-dist
+      - name: Assert client-dist artifact is present and non-empty
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "--- downloaded client-dist ---"
+          find client-dist -type f -printf '%p %s bytes\n' | sort
+          mapfile -t files < <(find client-dist -type f | sort)
+          [ "${#files[@]}" -gt 0 ] || { echo "::error::client-dist artifact contains no files"; exit 1; }
+          for f in "${files[@]}"; do
+            [ -s "$f" ] || { echo "::error::empty file in client-dist: $f"; exit 1; }
+          done
+          mapfile -t index_files < <(find client-dist -type f -name 'index.html' -size +0c)
+          [ "${#index_files[@]}" -gt 0 ] || { echo "::error::non-empty index.html missing from client-dist"; exit 1; }
+          echo "client-dist OK: ${#files[@]} non-empty files"
+
   image:
     name: Build + smoke-test Docker image
     runs-on: ubuntu-latest
