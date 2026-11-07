@@ -109,17 +109,17 @@ Windows runner 上跑 CLI 冒烟需 `PYTHONUTF8=1` / `PYTHONIOENCODING=utf-8`（
 
 | 层 | 内容 | 对应 CI |
 | --- | --- | --- |
-| L1 | Python 31 例（sync 20 / p2p 6 / pairing 5）+ 可选 DLL 冒烟 6 例（`test_core_dll.py`，`SELFSHARE_CORE_DLL` 门控） | `ci.yml` `python`；DLL 冒烟已补 CI job，待流水线实跑确认 |
+| L1 | Python 31 例（sync 20 / p2p 6 / pairing 5）+ 可选 DLL 冒烟 6 例（`test_core_dll.py`，`SELFSHARE_CORE_DLL` 门控） | `ci.yml` `python`；DLL 冒烟由 `core-dll-smoke` job 覆盖（已实跑） |
 | L2 | Rust 内核 18 例 + 集成测试 | `ci.yml` `rust` |
 | L3 | Go 20 例 + `go vet` + `go test -race` | `ci-v2.yml` `server-test` |
 | L4 | 跨实现：Python 兼容套件对接真实 Go 二进制 | `ci-v2.yml` `compat` |
-| L5 | 前端 `npm run build` + Tauri `cargo check --all-targets`；`engine_state` 2 例 | `ci-v2.yml` `client` 前端构建；`ci.yml` `v2-client` 已补 `cargo test --test engine_state`（已补 CI job，待流水线实跑确认） |
+| L5 | 前端 `npm run build` + Tauri `cargo check --all-targets`；`engine_state` 集成测试 | `ci-v2.yml` `client`（前端构建 + Tauri 打包）；`ci.yml` `v2-client`（cargo check + `engine_state`，已实跑） |
 | L6 | Flutter `analyze` + Windows 构建 | `ci.yml` `gui` |
-| L7 | Docker 镜像 `/api/ping`、二进制 `--version` / HTTPS、Release 资产 | `ci.yml` `v2-server`、`release.yml` |
+| L7 | Docker 镜像 `/api/ping`、二进制 `--version` / HTTPS、Release 资产 | `ci-v2.yml` `docker`、`release.yml` |
 
 没跑过的层要写明原因（如无 Docker 引擎、无 gcc/cgo、无 Flutter SDK），不得用「应该没问题」代替。
 
-**当前验证缺口（静态盘点，不是已承诺能力）**：DLL 冒烟 6 例与 `engine_state` 2 例已补 CI job（本轮 W1，仅在 `ci.yml` 增加 job / 步骤，尚未 push 实跑，待流水线实跑确认，**不得声称已被 CI 覆盖**）；HTTPS 自签与 `/api/pair` 冒烟仍无 CI。涉及这些场景时必须补用例并说明验证方式。四类必测中「peer 不可达回退」的缺口已于 2026-11-08 补独立断言（`tests/test_p2p.py::PeerFallbackTestCase`）。
+**当前验证缺口（静态盘点，不是已承诺能力）**：HTTPS 自签与 `/api/pair` 冒烟无 CI。DLL 冒烟 6 例（`core-dll-smoke`）与 `engine_state` 已由流水线实跑覆盖（run `42415759818` 全绿，2026-11-07）。四类必测中「peer 不可达回退」已补独立断言（`tests/test_p2p.py::PeerFallbackTestCase`）。涉及未覆盖场景时必须补用例并说明验证方式，不得写成「已由 CI 覆盖」。
 
 ## 7. 交付物归档映射（专家团按此落盘，不另建体系）
 

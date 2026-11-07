@@ -52,6 +52,7 @@ server.env
 # 开发缓存
 .box-agent-scratch/
 .box-agent/
+.codebuddy/
 .vs/
 .idea/
 

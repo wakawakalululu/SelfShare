@@ -1,8 +1,8 @@
 # [Unreleased]
 
 发布日期：未发布
-范围：v1 Python 客户端路径校验加固；CI/发布流水线补齐 v2 产物。
-补充范围：peer 不可达回退独立断言（`tests/test_p2p.py::PeerFallbackTestCase`）；协作规范 / 契约 / 决策文档新增。
+范围：v1 Python 客户端路径校验加固；CI/发布流水线补齐 v2 产物；v2 门禁收敛。
+补充范围：peer 不可达回退独立断言（`tests/test_p2p.py::PeerFallbackTestCase`）；「远程构建 ↔ 本地验证」循环工具；协作规范 / 契约 / 决策文档新增。
 
 ## 安全
 
@@ -14,12 +14,14 @@
 
 ## 工程
 
-- 根 `ci.yml` 新增 `v2-server`（`go vet` / `go test -race` / 交叉编译 / Docker 构建与 `/api/ping` 冒烟）与 `v2-client`（vite 构建 + `cargo check --all-targets`）。
-- `release.yml` 新增 `v2-client-bundle`，发布 v2 Tauri 客户端 Windows 安装包。
+- 根 `ci.yml` 新增 `v2-client`（vite 构建 + `cargo check --all-targets` + `engine_state` 测试）与 `core-dll-smoke`（下载 Rust 产物跑 6 例 DLL 冒烟）；`v2-server` 的 vet / race / Docker 冒烟收敛至 `ci-v2.yml` 权威覆盖，不再三处重复。
+- `ci-v2.yml` 触发器补 `tags: ['v*']`：发行标签上必跑 compat 跨实现套件。
+- `release.yml`：Release notes 只认 CHANGELOG 一级版本标题（伪 tag 显式失败，不再兜底整份文件）；`contents: write` 收窄至发布 job；`npm ci` 替代 `npm install`；发布资产 glob 互斥（8 个资产）；行尾统一 LF。
+- 新增「远程构建 ↔ 本地验证」循环：`desktop/scripts/ci_fetch.py`（Actions 产物 / Release 资产下载 + SHA256 校验，无 `gh` CLI 可用）与 `tests/test_core_dll.py`（Rust 内核 DLL ctypes 冒烟 6 例，`SELFSHARE_CORE_DLL` 门控）；用法见 CONTRIBUTING「远程构建 ↔ 本地验证循环」。
 - `Dockerfile` 改为 `--platform=$BUILDPLATFORM` + `TARGETOS/TARGETARCH` 交叉编译，避免多架构构建走 QEMU。
 - 新增 `v2/scripts/check.sh` 本地轻量检查；`build-test-deploy.yml` 补齐服务端镜像发布与可选滚动部署。
 
-测试口径：Python 31 例（sync 20 / p2p 6 / pairing 5）、Rust 内核 18 例、Go 20 例、Tauri `engine_state` 2 例。
+测试口径：Python 31 例（sync 20 / p2p 6 / pairing 5）+ 可选 DLL 冒烟 6 例、Rust 内核 18 例、Go 20 例、Tauri `engine_state` 测试。
 
 ---
 
