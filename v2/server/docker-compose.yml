@@ -9,7 +9,7 @@ services:
       - "${SELFSHARE_PORT:-8484}:8484"
     volumes:
       - selfshare-data:/data
-    # server-go 通过命令行参数配置，不读环境变量。
+    # server-go 通过命令行参数配置（唯一例外 SELFSHARE_SEAL_KEY，勿设置，见 v2/README.md）。
     command: ["--root", "/data", "--host", "0.0.0.0", "--port", "8484"]
     restart: unless-stopped
     healthcheck:

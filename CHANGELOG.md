@@ -1,3 +1,27 @@
+# [Unreleased]
+
+发布日期：未发布
+范围：v1 Python 客户端路径校验加固；CI/发布流水线补齐 v2 产物。
+
+## 安全
+
+- 修复 `selfshare.util.abs_path` 缺失根目录约束：`norm_rel` 会保留客户端原始文本，
+  Windows 上 `C:/...` 这类盘符路径会让 `os.path.join` 丢弃 vault 根，
+  同步清单可读写到 vault 之外。现在与 Rust (`desktop/core/src/util.rs`) 和
+  Go (`store.AbsPath`) 一致，落盘前拒绝绝对路径与盘符段（`tests/test_sync.py::SyncTestCase.test_abs_path_cannot_escape_vault`）。
+- 影响面：仅 v1 Python 客户端（服务端 `store.py` 走 `norm_rel`，不拼本地路径）。
+
+## 工程
+
+- 根 `ci.yml` 新增 `v2-server`（`go vet` / `go test -race` / 交叉编译 / Docker 构建与 `/api/ping` 冒烟）与 `v2-client`（vite 构建 + `cargo check --all-targets`）。
+- `release.yml` 新增 `v2-client-bundle`，发布 v2 Tauri 客户端 Windows 安装包。
+- `Dockerfile` 改为 `--platform=$BUILDPLATFORM` + `TARGETOS/TARGETARCH` 交叉编译，避免多架构构建走 QEMU。
+- 新增 `v2/scripts/check.sh` 本地轻量检查；`build-test-deploy.yml` 补齐服务端镜像发布与可选滚动部署。
+
+测试口径：Python 30 例（sync 20 / p2p 5 / pairing 5）、Rust 内核 18 例、Go 20 例、Tauri `engine_state` 2 例。
+
+---
+
 # [v2.0.0] — 2026-11-04
 
 发布日期：2026-11-04

@@ -139,7 +139,7 @@ Go 服务端完全兼容原 Python 服务端的 HTTP API：
 
 ## 服务端配置
 
-服务端**只认命令行参数**（不读 `SELFSHARE_*` 环境变量）：
+服务端**只认命令行参数**。唯一例外：内部会读 `SELFSHARE_SEAL_KEY`（配对码密封密钥，见 `internal/store/registry.go::sealKey`），其余 `SELFSHARE_*` 环境变量一律不读。**跨实现混跑（Python ↔ Go）时不要设置 `SELFSHARE_SEAL_KEY`**——Python 端不读它，两端解封密钥不一致会导致配对兑换跨实现失败（处置待定，见 `docs/decisions/OPEN-DECISIONS.md` O-4）：
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
@@ -186,6 +186,25 @@ cd client && npm run tauri build  # Windows 安装包
 ./scripts/build.sh server-all
 python scripts/bench_upload.py --server server/bin/selfshare-server
 ```
+
+### 本地开发 vs 远程流水线（省本地资源）
+
+本地只跑编译级校验（秒~分钟级），打包/镜像/多平台全部交给 GitHub Actions：
+
+```bash
+cd v2
+./scripts/check.sh        # go vet + go build + cargo check（内核与 Tauri 客户端）
+./scripts/check.sh full   # 额外跑 go test 与内核 cargo test
+```
+
+每次 push/PR，根目录 `.github/workflows/ci.yml` 自动完成完整编译检查：
+
+| 作业 | 内容 |
+|------|------|
+| `v2-server` | `go vet` / `go test -race` / linux+windows 交叉编译 / **Docker 镜像构建 + /api/ping 冒烟** |
+| `v2-client` | `vite build` 前端 + `cargo check --all-targets`（内核 + Tauri 客户端） |
+
+打 tag（`v*`）时 `release.yml` 额外产出：v2 服务端五平台二进制 + **v2 Tauri 客户端 Windows 安装包**，随 Release 一起发布。
 
 ## 与 v1 的关系
 

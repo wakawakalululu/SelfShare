@@ -32,7 +32,7 @@
 | --- | --- | --- | --- |
 | `src-tauri/Cargo.toml` | `selfshare-core` 启用 `features = ["tls"]`；客户端 `ureq` 启用 `json, tls` | 引导端点与同步数据面均可直连 `--cert/--key` 的 HTTPS 服务端 | 依赖特性；离线编译通过 |
 | `src-tauri/src/sync/state.rs`、`sync/engine.rs`、`sync/mod.rs` | 新增 `Settings` / `PeerEntry` DTO；`settings.json` 持久化；`pause_all` / `resume_all` / `sync_all` / `tray_state` / `list_peers`；`start_watch` 从设置读取巡检间隔与 P2P 开关；`list_mounts` 反映 `paused` | 配置可持久化、全局暂停/恢复、一键同步、在线节点查询；P2P 不再写死关闭 | 引擎编排层；同步算法仍委托 `desktop/core` |
-| `src-tauri/src/commands.rs`、`lib.rs` | 新增 7 个 IPC：`get_settings`、`save_settings`、`pause_sync_all`、`resume_sync_all`、`is_sync_paused`、`sync_all_mounts`、`list_peers`；注册命令总数 19 | 把此前未接线的能力与前端联通 | IPC 层 |
+| `src-tauri/src/commands.rs`、`lib.rs` | 新增 7 个 IPC：`get_settings`、`save_settings`、`pause_sync_all`、`resume_sync_all`、`is_sync_paused`、`sync_all_mounts`、`list_peers`；注册命令总数 20 | 把此前未接线的能力与前端联通 | IPC 层 |
 | `src-tauri/src/tray.rs` | 托盘 `with_id("main")`；菜单「立即同步全部 / 暂停同步 / 恢复同步 / 退出」直接作用于 `SyncEngine`；每 5 秒刷新 tooltip | 参考 [syncthingtray](https://github.com/Martchus/syncthingtray) 的实时状态与菜单控制 | 托盘层；暂停时 `start_watch` 拒绝启动 |
 | `src/pages/*.svelte`、`src/App.svelte` | 仪表盘轮询 + 统计 + 暂停/恢复/一键同步/导航；设备页连接探测、配对令牌复制、在线节点列表；设置页改用后端持久化且只暴露生效字段；文件夹页预填默认服务器地址；App 显示 `get_version` 版本号 | 前端与新增 IPC 联调 | 5 个页面 + 应用壳 |
 | `svelte.config.js`、`src/styles.css`、`src/main.ts`、`index.html`、`src-tauri/tauri.conf.json` | 补 `vitePreprocess()`、全局样式、Svelte 4 `new App()` 挂载、移除 `/src/styles.css` 直链、移除不存在的 `icon.icns` | 修复前端构建失败与打包缺图标 | 前端工程；`package-lock.json` 生成 |

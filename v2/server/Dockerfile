@@ -1,7 +1,9 @@
 # syntax=docker/dockerfile:1
 
 # ---- 构建阶段 ----
-FROM golang:1.24-alpine AS builder
+# builder 固定在构建宿主机架构运行，通过 GOARCH 交叉编译目标架构，
+# 避免 buildx 多架构构建时用 QEMU 模拟整套 Go 工具链（纯 Go 代码可直接交叉编译）。
+FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS builder
 
 # server-go 用纯 Go 的 modernc.org/sqlite，无需 cgo / gcc。
 RUN apk add --no-cache ca-certificates tzdata
@@ -14,8 +16,13 @@ RUN go mod download
 
 COPY . .
 
+ARG TARGETOS
+ARG TARGETARCH
+
 # 二进制不注入 version/commit（该 main.go 未定义这些变量），只做体积裁剪。
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" \
+# 普通 docker build 同样会注入 TARGETOS/TARGETARCH；默认值保持与旧行为一致。
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
+    go build -trimpath -ldflags="-s -w" \
     -o /out/selfshare-server ./cmd/selfshare-server
 
 # ---- 运行阶段 ----
@@ -37,6 +44,6 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 USER selfshare
 WORKDIR /data
 
-# server-go 只认命令行参数，不读 SELFSHARE_* 环境变量：用 CMD 传参。
+# server-go 只认命令行参数（唯一例外 SELFSHARE_SEAL_KEY，跨实现混跑勿设置，见 v2/README.md）：用 CMD 传参。
 ENTRYPOINT ["/usr/local/bin/selfshare-server"]
 CMD ["--root", "/data", "--host", "0.0.0.0", "--port", "8484"]
