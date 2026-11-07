@@ -23,7 +23,7 @@ python selfshare.py server
   │  在另一台设备上连接（配对码 30 分钟内有效）  │
   └──────────────────────────────────────────────┘
      地址  : http://192.168.1.10:8484
-     配对码: SS-5T8Y-E3FA-THV3
+     配对码: SS-XXXX-XXXX-XXXX
 ```
 
 ### 第 2 步：另一台机器连接
@@ -33,7 +33,7 @@ python selfshare.py server
 或者用命令行：
 
 ```bash
-python selfshare.py pair D:\同步盘 --url http://192.168.1.10:8484 --code SS-5T8Y-E3FA-THV3
+python selfshare.py pair D:\同步盘 --url http://192.168.1.10:8484 --code SS-XXXX-XXXX-XXXX
 ```
 
 ### 第 3 步：完成
@@ -111,7 +111,7 @@ docker run -d --name selfshare -p 8484:8484 -v selfshare-data:/data selfshare-se
 
 ## 开发
 
-Python 30 个测试方法、Rust 内核 18 项测试、Go 服务端 20 项测试，`flutter analyze` 零问题。详见 [CONTRIBUTING.md](CONTRIBUTING.md) 与 [v2/README.md](v2/README.md)。
+Python 31 个测试方法、Rust 内核 18 项测试、Go 服务端 20 项测试，`flutter analyze` 零问题。详见 [CONTRIBUTING.md](CONTRIBUTING.md) 与 [v2/README.md](v2/README.md)。
 
 ## 许可
 

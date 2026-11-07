@@ -2,6 +2,7 @@
 
 发布日期：未发布
 范围：v1 Python 客户端路径校验加固；CI/发布流水线补齐 v2 产物。
+补充范围：peer 不可达回退独立断言（`tests/test_p2p.py::PeerFallbackTestCase`）；协作规范 / 契约 / 决策文档新增。
 
 ## 安全
 
@@ -18,7 +19,7 @@
 - `Dockerfile` 改为 `--platform=$BUILDPLATFORM` + `TARGETOS/TARGETARCH` 交叉编译，避免多架构构建走 QEMU。
 - 新增 `v2/scripts/check.sh` 本地轻量检查；`build-test-deploy.yml` 补齐服务端镜像发布与可选滚动部署。
 
-测试口径：Python 30 例（sync 20 / p2p 5 / pairing 5）、Rust 内核 18 例、Go 20 例、Tauri `engine_state` 2 例。
+测试口径：Python 31 例（sync 20 / p2p 6 / pairing 5）、Rust 内核 18 例、Go 20 例、Tauri `engine_state` 2 例。
 
 ---
 
@@ -91,13 +92,13 @@ python selfshare.py server
 
 ```text
      地址  : http://192.168.1.10:8484
-     配对码: SS-5T8Y-E3FA-THV3
+     配对码: SS-XXXX-XXXX-XXXX
 ```
 
 ### 客户端一条命令
 
 ```bash
-selfshare pair D:\同步盘 --url http://192.168.1.10:8484 --code SS-5T8Y-E3FA-THV3
+selfshare pair D:\同步盘 --url http://192.168.1.10:8484 --code SS-XXXX-XXXX-XXXX
 ```
 
 自动完成：换令牌 → 写配置 → 首次同步。

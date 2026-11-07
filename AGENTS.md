@@ -109,17 +109,17 @@ Windows runner 上跑 CLI 冒烟需 `PYTHONUTF8=1` / `PYTHONIOENCODING=utf-8`（
 
 | 层 | 内容 | 对应 CI |
 | --- | --- | --- |
-| L1 | Python 31 例（sync 20 / p2p 6 / pairing 5） | `ci.yml` `python` |
+| L1 | Python 31 例（sync 20 / p2p 6 / pairing 5）+ 可选 DLL 冒烟 6 例（`test_core_dll.py`，`SELFSHARE_CORE_DLL` 门控） | `ci.yml` `python`；DLL 冒烟已补 CI job，待流水线实跑确认 |
 | L2 | Rust 内核 18 例 + 集成测试 | `ci.yml` `rust` |
 | L3 | Go 20 例 + `go vet` + `go test -race` | `ci-v2.yml` `server-test` |
 | L4 | 跨实现：Python 兼容套件对接真实 Go 二进制 | `ci-v2.yml` `compat` |
-| L5 | 前端 `npm run build` + Tauri `cargo check --all-targets`；`engine_state` 2 例**无 CI job** | `ci-v2.yml` `client` 仅覆盖前端构建；`ci.yml` `v2-client` 仅 cargo check |
+| L5 | 前端 `npm run build` + Tauri `cargo check --all-targets`；`engine_state` 2 例 | `ci-v2.yml` `client` 前端构建；`ci.yml` `v2-client` 已补 `cargo test --test engine_state`（已补 CI job，待流水线实跑确认） |
 | L6 | Flutter `analyze` + Windows 构建 | `ci.yml` `gui` |
 | L7 | Docker 镜像 `/api/ping`、二进制 `--version` / HTTPS、Release 资产 | `ci.yml` `v2-server`、`release.yml` |
 
 没跑过的层要写明原因（如无 Docker 引擎、无 gcc/cgo、无 Flutter SDK），不得用「应该没问题」代替。
 
-**当前验证缺口（静态盘点，不是已承诺能力）**：`engine_state` 2 例无 CI；HTTPS 自签与 `/api/pair` 冒烟无 CI。涉及这些场景时必须补用例并说明验证方式，不得写成「已由 CI 覆盖」。四类必测中「peer 不可达回退」的缺口已于 2026-11-08 补独立断言（`tests/test_p2p.py::PeerFallbackTestCase`）。
+**当前验证缺口（静态盘点，不是已承诺能力）**：DLL 冒烟 6 例与 `engine_state` 2 例已补 CI job（本轮 W1，仅在 `ci.yml` 增加 job / 步骤，尚未 push 实跑，待流水线实跑确认，**不得声称已被 CI 覆盖**）；HTTPS 自签与 `/api/pair` 冒烟仍无 CI。涉及这些场景时必须补用例并说明验证方式。四类必测中「peer 不可达回退」的缺口已于 2026-11-08 补独立断言（`tests/test_p2p.py::PeerFallbackTestCase`）。
 
 ## 7. 交付物归档映射（专家团按此落盘，不另建体系）
 
@@ -127,14 +127,14 @@ Windows runner 上跑 CLI 冒烟需 `PYTHONUTF8=1` / `PYTHONIOENCODING=utf-8`（
 | --- | --- |
 | 需求边界 / 增量需求卡 / API 契约 / 存储布局 / 同步语义 / ABI 与 IPC 契约 | `docs/contracts/` |
 | 架构决策、未决项 | `docs/decisions/ADR-XXX.md`、`docs/decisions/OPEN-DECISIONS.md` |
-| 过程性验证记录（命令输出、本机路径） | `软件开发专家团/memory/YYYY-MM-DD.md`；发布级验证结论并入 `v2/RELEASE_SUMMARY.md` |
+| 过程性验证记录（命令输出、本机路径） | `.codebuddy/skills/软件开发专家团/memory/YYYY-MM-DD.md`；发布级验证结论并入 `v2/RELEASE_SUMMARY.md` |
 | 用户文档、口径修订 | `docs/`、`.github/wiki/`、`README.md`、`v2/README.md`、`CHANGELOG.md` |
 | 阶段性复盘、风险编号 | `PROJECT_STATUS.md`（`R*` 风险 / `P*` 计划） |
-| 专家团记忆 | `软件开发专家团/memory/`（`MEMORY.md`、`project-tracker.md`、当日日志） |
+| 专家团记忆 | `.codebuddy/skills/软件开发专家团/memory/`（`MEMORY.md`、`project-tracker.md`、当日日志） |
 
 上述目录按需要创建，不要预建空目录；已有文档优先更新，避免同一事实多处维护。
 
-`docs/` 是 Jekyll 文档站 source（`pages.yml`），`docs/_config.yml` 未配置 `exclude`：**内部验证记录、含本机路径或进程信息的材料不得放入 `docs/`**；对外契约（`docs/contracts/`）与 ADR（`docs/decisions/`）可以公开。
+`docs/` 是 Jekyll 文档站 source（`pages.yml`），`docs/_config.yml` 已配置 `exclude: [qa]`；`docs/contracts/` 与 `docs/decisions/` 公开，qa 为站点层剪枝。**内部验证记录、含本机路径或进程信息的材料不得放入 `docs/`**（过程性正文归 `.codebuddy/skills/软件开发专家团/memory/`，`docs/qa/` 仅留简短索引）。
 
 ## 8. 提交、分支与发布
 
