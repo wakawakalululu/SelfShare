@@ -35,27 +35,43 @@ LISTEN_RE = re.compile(r"listening on http://127\.0\.0\.1:(\d+)")
 
 def start_server(binary: str):
     root = tempfile.mkdtemp(prefix="selfshare-bench-")
-    Registry(root).create_vault(VAULT, token=TOKEN)
-    log_path = os.path.join(root, "server.log")
-    log = open(log_path, "wb")
-    proc = subprocess.Popen(
-        [binary, "--root", root, "--host", "127.0.0.1", "--port", "0", "--quiet"],
-        stdout=log,
-        stderr=subprocess.STDOUT,
-    )
-    deadline = time.time() + 30
-    while time.time() < deadline:
-        try:
-            with open(log_path, "r", encoding="utf-8", errors="replace") as fh:
-                match = LISTEN_RE.search(fh.read())
-            if match:
-                return proc, root, log, "http://127.0.0.1:" + match.group(1)
-        except OSError:
-            pass
-        if proc.poll() is not None:
-            raise RuntimeError("服务端提前退出，日志：" + log_path)
-        time.sleep(0.1)
-    raise RuntimeError("服务端未在 30 秒内报告端口")
+    log = None
+    proc = None
+    try:
+        Registry(root).create_vault(VAULT, token=TOKEN)
+        log_path = os.path.join(root, "server.log")
+        log = open(log_path, "wb")
+        proc = subprocess.Popen(
+            [binary, "--root", root, "--host", "127.0.0.1", "--port", "0", "--quiet"],
+            stdout=log,
+            stderr=subprocess.STDOUT,
+        )
+        deadline = time.time() + 30
+        while time.time() < deadline:
+            try:
+                with open(log_path, "r", encoding="utf-8", errors="replace") as fh:
+                    match = LISTEN_RE.search(fh.read())
+                if match:
+                    return proc, root, log, "http://127.0.0.1:" + match.group(1)
+            except OSError:
+                pass
+            if proc.poll() is not None:
+                raise RuntimeError("服务端提前退出，日志：" + log_path)
+            time.sleep(0.1)
+        raise RuntimeError("服务端未在 30 秒内报告端口")
+    except BaseException:
+        # 启动失败/超时时也要回收进程与临时目录，避免 bench_ab 反复运行后残留。
+        if proc is not None and proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+        if log is not None:
+            log.close()
+        shutil.rmtree(root, ignore_errors=True)
+        raise
 
 
 def put_blob(base: str, digest: str, payload: bytes) -> int:

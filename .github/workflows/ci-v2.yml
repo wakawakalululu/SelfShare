@@ -79,6 +79,36 @@ jobs:
           go build -trimpath -ldflags="-s -w" \
             -o "bin/selfshare-server-${GOOS}-${GOARCH}${ext}" ./cmd/selfshare-server
           ls -lh bin/
+      # 交叉编译只能保证"能构建"，这里让 linux/amd64 产物实跑一次。
+      - name: Smoke test linux/amd64 binary
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        run: |
+          set -euo pipefail
+          B=bin/selfshare-server-linux-amd64
+          go version -m "$B"
+          "$B" --version | grep -q '^selfshare-server '
+          "$B" --root "$RUNNER_TEMP/ss-smoke" --host 127.0.0.1 --port 18584 --quiet \
+            > "$RUNNER_TEMP/ss-smoke.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/ss-smoke.pid"
+          ok=""
+          for i in $(seq 1 20); do
+            if ! kill -0 "$(cat "$RUNNER_TEMP/ss-smoke.pid")" 2>/dev/null; then
+              cat "$RUNNER_TEMP/ss-smoke.log"; exit 1
+            fi
+            if curl -fsS --max-time 2 http://127.0.0.1:18584/api/ping | grep -q '"engine":"go"'; then ok=1; break; fi
+            sleep 0.5
+          done
+          test -n "$ok"
+      - name: Stop smoke server
+        if: always() && matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        run: |
+          # 仅清理后台进程与日志，不影响上一步的失败结论。
+          if [ -f "$RUNNER_TEMP/ss-smoke.pid" ]; then
+            pid=$(cat "$RUNNER_TEMP/ss-smoke.pid")
+            kill "$pid" 2>/dev/null || true
+            for i in 1 2 3 4 5; do kill -0 "$pid" 2>/dev/null || break; sleep 0.2; done
+          fi
+          cat "$RUNNER_TEMP/ss-smoke.log" 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         with:
           name: server-${{ matrix.goos }}-${{ matrix.goarch }}
