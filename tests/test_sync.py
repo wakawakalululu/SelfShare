@@ -254,6 +254,25 @@ class SyncTestCase(unittest.TestCase):
         with self.assertRaises(ValueError):
             norm_rel("a/../../b.txt")
 
+    def test_abs_path_cannot_escape_vault(self):
+        """盘符/绝对路径会让 os.path.join 丢掉 root，必须拒绝（对齐 Rust/Go）。
+
+        Server 存的是客户端发来的原始 rel；若只有 norm_rel，Windows 上
+        ``C:/Windows/x.txt`` 会解析到 vault 之外，读写都会越界。
+        """
+        from selfshare.util import abs_path
+
+        root = tempfile.mkdtemp(prefix="selfshare-abs-")
+        try:
+            for escape in ("C:/Windows/x.txt", "C:rel/x.txt", "D:/y.txt"):
+                with self.assertRaises(ValueError, msg=escape):
+                    abs_path(root, escape)
+            for ok in ("a/b.txt", "sub/dir/名字.md"):
+                resolved = abs_path(root, ok)
+                self.assertTrue(resolved.startswith(root + os.sep), resolved)
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+
     def test_three_hosts_converge(self):
         c = tempfile.mkdtemp(prefix="selfshare-hostC-")
         try:

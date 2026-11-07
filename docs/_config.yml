@@ -9,3 +9,10 @@ relative_links:
   enabled: true
   collections: false
 show_downloads: false
+
+# 过程性记录不进站点：验证日志与 CI 原始输出属于内部证据，权威副本在
+# 软件开发专家团/memory/。
+# Jekyll 的 exclude 按路径段匹配：目录名不带尾斜杠才会剪掉整棵子树。
+exclude:
+  - qa
+  - decisions

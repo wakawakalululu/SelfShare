@@ -52,11 +52,32 @@ def norm_rel(rel: str) -> str:
 
 
 def abs_path(root: str, rel: str) -> str:
-    """Join a normalised relative path onto a local root directory."""
+    """Join a normalised relative path onto a local root directory.
+
+    ``norm_rel`` rejects ``..`` segments but deliberately keeps other text
+    verbatim, because the server stores whatever the client sends.  On Windows
+    a segment such as ``C:`` makes ``os.path.join`` discard ``root`` and
+    resolve against that drive's current directory, so a malicious or buggy
+    manifest could read and write outside the vault.  Rust
+    (``desktop/core/src/util.rs``) and Go (``store.AbsPath``) both add a
+    post-join containment check; this keeps Python in line with them.
+
+    The check is lexical and cheap: it rejects absolute paths and drive-relative
+    segments, which are the only ways ``os.path.join`` can drop the root.
+    Symlinked directories inside the vault keep their previous behaviour
+    (``norm_rel`` never claimed to resolve them).
+    """
     rel = norm_rel(rel)
     if not rel:
         raise ValueError("empty relative path")
-    return os.path.join(root, *rel.split("/"))
+    if os.path.isabs(rel) or os.path.splitdrive(rel)[0]:
+        raise ValueError("path must stay relative to the vault: %r" % rel)
+    joined = os.path.join(root, *rel.split("/"))
+    root_abs = os.path.abspath(root)
+    joined_abs = os.path.abspath(joined)
+    if os.path.commonpath([root_abs, joined_abs]) != root_abs:
+        raise ValueError("path escapes root: %r" % rel)
+    return joined
 
 
 def ensure_parent(path: str) -> None:
