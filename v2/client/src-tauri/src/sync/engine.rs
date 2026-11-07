@@ -7,7 +7,7 @@
 //! - 监视句柄放在独立的 Mutex 里，回调只更新状态表，避免 drop 句柄 join 线程时又去锁同一把锁。
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use selfshare_core::client::Client;
@@ -103,6 +103,10 @@ impl SyncEngine {
     }
 
     /// 暂停全部监控；记录暂停前在跑的挂载，恢复时原样重启。
+    ///
+    /// 幂等：仅首次暂停（!paused）置位并记录 `resume_names`。
+    /// 已暂停时直接返回，避免第二次调用时 `watchers` 已空、`names` 为空
+    /// 而把首次记录的集合覆盖掉，导致 `resume_all` 无 watcher 可重启。
     pub async fn pause_all(&self) -> Result<(), String> {
         let (names, handles): (Vec<String>, Vec<WatchHandle>) = {
             let mut w = self.watchers.lock().unwrap();
@@ -112,6 +116,9 @@ impl SyncEngine {
         };
         drop(handles); // 锁外 join，避免与回调争锁
         let mut g = self.reg.lock().unwrap();
+        if g.paused {
+            return Ok(()); // 保留首次记录的 resume_names，不覆盖为空集合
+        }
         g.paused = true;
         g.resume_names = names.iter().cloned().collect();
         for n in &names {
@@ -389,14 +396,45 @@ impl SyncEngine {
                 .ok_or_else(|| format!("找不到 {} 的 rev {} 版本", path_s, rev))?;
             let data = client.get_blob_bytes(&digest).map_err(|e| e.to_string())?;
             let target = util::abs_path(&folder, &path_s)?; // 拒绝 .. 越界
-            util::ensure_parent(&target).map_err(|e| e.to_string())?;
-            util::atomic_write(&target, &data).map_err(|e| e.to_string())?;
+            // 与 v1 `ss_restore` 默认不覆盖对齐：本地同名文件存在时写恢复副本。
+            SyncEngine::write_restored_bytes(&target, &data)?;
             Ok(())
         })
         .await
         .map_err(|e| e.to_string())??;
         // 恢复后本地内容变回旧版本，下一次同步会把它作为新版本推上去（不篡改历史）。
         Ok(())
+    }
+
+    /// 历史版本落地（不触网，供 `restore_version` 与本地测试共用）。
+    ///
+    /// 对齐 v1 `ss_restore`（desktop/core/src/ffi.rs:596-607）的默认不覆盖语义：
+    /// 目标已存在时写到同目录的「stem (恢复 YYYYMMDD-HHMMSS).ext」恢复副本，
+    /// 保护本地未同步编辑；目标不存在时仍写原路径。
+    /// 这不是 IPC 命令、不新增参数，仅把下载 blob 之后的写入段抽成可直调纯函数。
+    #[doc(hidden)]
+    pub fn write_restored_bytes(target: &Path, data: &[u8]) -> Result<PathBuf, String> {
+        util::ensure_parent(target).map_err(|e| e.to_string())?;
+        let final_path = if target.exists() {
+            let stem = target
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let ext = target
+                .extension()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let name = if ext.is_empty() {
+                format!("{} (恢复 {})", stem, util::now_stamp())
+            } else {
+                format!("{} (恢复 {}).{}", stem, util::now_stamp(), ext)
+            };
+            target.with_file_name(name)
+        } else {
+            target.to_path_buf()
+        };
+        util::atomic_write(&final_path, data).map_err(|e| e.to_string())?;
+        Ok(final_path)
     }
 
     pub async fn get_stat(&self, name: &str) -> Result<Stat, String> {
