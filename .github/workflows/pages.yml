@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
   pages: write
   id-token: write
 
@@ -41,6 +42,32 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: ./_site
+
+      # upload-pages-artifact 已成功 finalize，但 artifact 元数据 API 偶发短暂不可见，
+      # deploy-pages 会立刻报 "Found 0 artifact(s)"。显式轮询到可见再部署。
+      - name: Wait for pages artifact metadata
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 15); do
+            found=$(
+              curl -sS -H "Authorization: Bearer $GH_TOKEN" \
+                -H "Accept: application/vnd.github+json" \
+                "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?per_page=100" \
+                | python3 -c 'import json,sys; d=json.load(sys.stdin); print(sum(1 for a in d.get("artifacts", []) if a.get("name") == "github-pages" and not a.get("expired")))' \
+                2>/dev/null || echo 0
+            )
+            if [ "$found" -ge 1 ]; then
+              echo "github-pages artifact visible (attempt $i)"
+              exit 0
+            fi
+            echo "artifact metadata not visible yet (attempt $i)"
+            sleep 2
+          done
+          echo "::error::github-pages artifact never became visible"
+          exit 1
 
       - id: deployment
         uses: actions/deploy-pages@v4
