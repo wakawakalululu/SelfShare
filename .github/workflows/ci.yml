@@ -118,6 +118,38 @@ jobs:
           path: desktop/core/target/release/selfshare_core.dll
           if-no-files-found: error
 
+  core-dll-smoke:
+    name: Core DLL smoke (6 gated tests)
+    runs-on: windows-latest
+    needs: rust
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: selfshare-core-windows
+          path: .ss-artifacts
+
+      - name: Assert DLL present and non-empty
+        shell: pwsh
+        run: |
+          $dll = '.ss-artifacts/selfshare_core.dll'
+          if (-not (Test-Path -LiteralPath $dll -PathType Leaf)) { throw "missing artifact DLL: $dll" }
+          $item = Get-Item -LiteralPath $dll
+          if (-not ($item.Length -gt 0)) { throw "empty artifact DLL: $dll" }
+          Write-Host "artifact DLL ok: $($item.FullName) length=$($item.Length)"
+
+      - name: Core DLL tests (SELFSHARE_CORE_DLL)
+        shell: pwsh
+        run: |
+          $env:SELFSHARE_CORE_DLL = (Resolve-Path '.ss-artifacts/selfshare_core.dll').Path
+          python tests/test_core_dll.py -v
+          if ($LASTEXITCODE -ne 0) { throw "core DLL tests failed with exit code $LASTEXITCODE" }
+
   gui:
     name: Windows GUI build
     runs-on: windows-latest
@@ -269,3 +301,7 @@ jobs:
       - name: Cargo check (server kernel + tauri client)
         working-directory: v2/client/src-tauri
         run: cargo check --all-targets
+
+      - name: Tauri engine state tests
+        working-directory: v2/client/src-tauri
+        run: cargo test --test engine_state -- --nocapture
