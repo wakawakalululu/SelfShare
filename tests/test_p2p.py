@@ -216,5 +216,51 @@ class BlobAdvertisementTestCase(unittest.TestCase):
             shutil.rmtree(folder, ignore_errors=True)
 
 
+class PeerFallbackTestCase(unittest.TestCase):
+    """peer 不可达时必须回退中心服务器：AGENTS.md §6 明列的验证缺口，此前无独立断言。"""
+
+    def setUp(self):
+        self.fx = P2PServerFixture()
+
+    def tearDown(self):
+        self.fx.stop()
+
+    def test_unreachable_peer_falls_back_to_server(self):
+        folder = tempfile.mkdtemp(prefix="selfshare-p2p-fall-")
+        try:
+            import socket as _socket
+
+            from selfshare.sync import Syncer
+            with Syncer(folder, self.fx.client()) as s:
+                with open(os.path.join(folder, "center.txt"), "w", encoding="utf-8") as fh:
+                    fh.write("only the center has this")
+                s.sync()
+            digest = sha256_file(os.path.join(folder, "center.txt"))
+
+            # 注册一个 listen 指向已关闭端口的假节点，并声明持有该 blob：
+            # 它会因命中广播列表排在候选首位，P2P 拉取失败后必须回退中心。
+            sock = _socket.socket()
+            sock.bind(("127.0.0.1", 0))
+            dead_port = sock.getsockname()[1]
+            sock.close()
+            client = self.fx.client()
+            client.peer_register("dead-peer", "127.0.0.1:%d" % dead_port,
+                                 [digest], host_id="dead-host")
+            peers = client.peers(with_blobs=True)
+            self.assertEqual(len(peers), 1)
+            self.assertEqual(peers[0]["peer_id"], "dead-peer")
+
+            dest = os.path.join(folder, "out.bin")
+            try:
+                source = client.get_blob_with_peers(digest, dest)
+            finally:
+                client.peer_unregister("dead-peer")
+            self.assertEqual(source, "server")
+            self.assertEqual(sha256_file(dest), digest)
+            self.assertFalse(os.path.exists(dest + ".selfshare-p2p-tmp"))
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
