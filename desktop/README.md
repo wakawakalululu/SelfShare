@@ -16,7 +16,7 @@ Rust 客户端与 Python CLI 客户端可以连接同一个 vault；已实测 Ru
 
 ## 目录
 
-- `core/`：Rust 同步内核、C ABI、Rust CLI、12 个测试
+- `core/`：Rust 同步内核、C ABI、Rust CLI、18 个测试（7 单元 + 11 集成）
 - `app/`：Flutter 桌面 GUI、系统托盘、挂载管理、进度、历史恢复
 - `scripts/build_windows.ps1`：先构建 Rust DLL，再生成/构建 Flutter Windows 工程
 - `../deploy/windows/`：Windows 计划任务 XML 和安装脚本

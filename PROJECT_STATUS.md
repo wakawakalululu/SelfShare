@@ -3,7 +3,7 @@
 > 仓库：`wakawakalululu/SelfShare`
 > 基线：分支 `master` @ `42d6764`（`origin/master`）；最近发布标签 `v1.3.0` @ `714e9ee`（2026-11-03）
 > 分析方式：源码 / 文档 / 工作流静态审阅 + Git 索引与打包对象比对
-> 状态：本机 PATH 与常见安装路径均未找到 `git` 可执行文件，**未执行任何 `commit` / `push`**；本文为待提交内容与提交规范的准备稿
+> 状态：本文 §1.2–§5 为 2026-11-04 基线（`42d6764`）时的盘点与计划快照，R1–R12 已全部闭环；当前状态以 §1.1.1 与 `v2/RELEASE_SUMMARY.md` 为准：`master` 已推送至 `acb14ec`、工作区干净、`v2.0.0` Release 已发布
 > 维护约定：阶段性交付后更新本文件，提交信息引用本文的 `R*` 风险编号与 `P*` 计划编号
 
 ---
@@ -220,19 +220,20 @@ git add v2/client/index.html v2/client/package.json v2/client/svelte.config.js \
 ```
 
 说明：R1 已修复，`**/target/`、`node_modules/`、`bin/`、二进制扩展名等均被忽略；仍建议显式路径，
-因为 `v2/superseded/`（R7 待决策）与生成物目录不宜随本次提交入库。新增文件还需加入：
+因为 `v2/superseded/` 已删除（R7 闭环）且生成物不应入库。新增文件还需加入：
 `.github/workflows/ci-v2.yml`、`v2/client/package-lock.json`、`v2/client/src/styles.css`、
 `v2/client/src-tauri/tests/engine_state.rs`、`v2/server/internal/store/*_test.go`、
-`v2/scripts/bench_upload.py`。`v2/.github/workflows/ci.yml` 已删除（迁移到根）。
+`v2/scripts/bench_upload.py`、`v2/scripts/bench_ab.py`。`v2/.github/workflows/ci.yml` 已删除（迁移到根）。
 
 ### 5.5 追溯索引
 
 | 项 | 值 |
 | --- | --- |
 | 基线提交 | `42d67645af534c5eec3c43668311604616381745`（`master` / `origin/master`） |
-| 发布标签 | `v1.1.0` / `v1.2.0` / `v1.3.0`（`714e9ee91cfe0e69ad9fb25e4c3fdc9a37f36d85`） |
-| 另一远程分支 | `origin/main` @ `78d0293a9e03cdb90bf9fa430c8752a7014a45cd` |
-| 分析日期 | 2026-11-04（含当日第二轮开发与运行测试） |
+| 发布标签 | `v1.1.0` / `v1.2.0` / `v1.3.0`（`714e9ee91cfe0e69ad9fb25e4c3fdc9a37f36d85`）/ `v2.0.0`（`1c8559c`，附注 tag，Release 7 资产） |
+| 另一远程分支 | `origin/main` @ `78d0293a9e03cdb90bf9fa430c8752a7014a45cd`（仅含 Initial commit，待人工归档） |
+| 分析日期 | 2026-11-04（含当日第二轮开发与运行测试；2026-11-07 状态见 §1.1.1） |
 | 分析范围 | 根目录 v1（99 个已跟踪文件）、`v2/`（8127 个文件）、`.github/workflows/`、`docs/`、`.github/wiki/`、`deploy/` |
-| 运行验证 | Go 20 + vet、Python 29（其中 24 对接 Go 二进制）、Rust 18 + 2、前端构建、Tauri 编译、Windows/WSL 二进制、HTTPS、并发基准首次观测 21.5 MB/s（同轮 A/B 未复现 33 倍）；详见 `v2/RELEASE_SUMMARY.md` §2.2 |
-| 未执行操作 | `git add` / `git commit` / `git push`（本机无 `git`）；GitHub Actions / Release 需推送后验证 |
+| 运行验证 | Go 20 + vet、Python 29（其中 24 对接 Go 二进制）、Rust 18 + 2、前端构建、Tauri 编译、Windows/WSL 二进制、HTTPS、并发基准首次观测 21.5 MB/s（同轮 A/B 未复现 33 倍）；CI / CI v2 / Pages / Release 实跑全绿，详见 `v2/RELEASE_SUMMARY.md` §2.2、§4.1 |
+| 已执行操作 | `git add` / `git commit` / `git push` 已完成，`master` 与 `v2.0.0` tag 均已推送，工作区干净 |
+| 仍待人工 | 删除远程 `origin/main` 与 `refs/tags/master`；darwin / linux-arm64 二进制实机冒烟 |

@@ -6,7 +6,7 @@
 | 版本 | 服务端 `2.0.0`（`--version`）；HTTP `ServiceVersion` 保持 `1.0` 以兼容 v1 客户端 |
 | 记录日期 | 2026-11-04（2026-11-05 推送与 CI 复核更新） |
 | 基线 | `master` `42d67645af534c5eec3c43668311604616381745`；`v1.3.0` tag `714e9ee91cfe0e69ad9fb25e4c3fdc9a37f36d85` |
-| 当前状态 | `master` 与 `v2.0.0` 附注标签均已推送；**v2.0.0 Release 已发布成功（7 个资产）**；Pages 与 CI v2 主要 job 成功；根 CI Windows Python job 的编码失败已修复并推送，最新 CI 复跑进行中 |
+| 当前状态 | `master` 已推送至 `acb14ec`，工作区干净；`v2.0.0` 附注 tag（`1c8559c`）与 Release 已发布（7 个资产、notes 51 行、非 draft）；`CI` / `CI v2` / `Pages` / `Release` 最新运行全部 `completed/success`（含 Windows GUI 与 Tauri 打包）；根 CI 编码修复已复验；tag 触发的旧 CI failure 仅为历史记录 |
 | 数据来源 | 本机命令输出 + GitHub Actions / Releases API；对照 `v2/README.md`「验证状态」、`PROJECT_STATUS.md` §1.1.1、`CHANGELOG.md` `[v2.0.0]` |
 
 ---
@@ -100,9 +100,19 @@
 复跑（从仓库根，需空闲环境）：
 
 ```bash
+# 单次基准（正确性 + 吞吐）
 python v2/scripts/bench_upload.py --server v2/server/bin/selfshare-server.exe \
   --files 32 --size-kb 256 --workers 16
+
+# 同轮 A/B：固定 seed、预热、ABBA 交替、多次中位数；
+# --build-baseline 用 go build -overlay 生成「优化前」二进制，不改仓库源码
+python v2/scripts/bench_ab.py --server-a v2/server/bin/selfshare-server.exe \
+  --build-baseline --go go --repeats 3 --out bench-ab.json
 ```
+
+`bench_ab.py` 输出每侧中位数与 MAD、两个二进制的 sha256，结论为
+`no_significant_difference` 或 `directional_only`，**不报告倍数、不做阈值断言**；
+脚本不进入 push / PR 门禁（共享 runner 负载抖动大）。
 
 ### 2.3 统计口径
 
@@ -266,8 +276,8 @@ tag `v2.0.0` 触发的根 CI 仍为历史 failure（tag 指向修复前提交 `1
 | 架构与性能优化说明 | `v2/ARCHITECTURE.md` §2 |
 | 验证状态与构建/部署命令 | `v2/README.md`「验证状态」「构建」 |
 | 本轮修复与验证汇总 | `PROJECT_STATUS.md` §1.1.1、§5 |
-| 变更清单 | `CHANGELOG.md` `[Unreleased]` |
+| 变更清单 | `CHANGELOG.md` `# [v2.0.0] — 2026-11-04`（并补 `# v1.2.0 发布说明` 小节） |
 | 本地验证命令 | `CONTRIBUTING.md`「本地验证」 |
 | CI / 发布定义 | `.github/workflows/ci-v2.yml`、`release.yml`、`ci.yml`、`pages.yml` |
-| 性能基准脚本 | `v2/scripts/bench_upload.py` |
+| 性能基准脚本 | `v2/scripts/bench_upload.py`（单次）、`v2/scripts/bench_ab.py`（同轮 A/B、overlay 基线、中位数/MAD） |
 | 部署模板 | `v2/server/Dockerfile`、`docker-compose.yml`、`deploy/selfshare.service` |

@@ -35,6 +35,7 @@ cd src-tauri && cargo build && cargo test --test engine_state
 # 并发上传基准（回到仓库根后执行，需先构建 Go 二进制）
 cd ../../../..
 python v2/scripts/bench_upload.py --server v2/server/bin/selfshare-server.exe
+python v2/scripts/bench_ab.py --server-a v2/server/bin/selfshare-server.exe --build-baseline --repeats 3
 ```
 
 ## 代码约定
@@ -68,7 +69,7 @@ docs(wiki): add FAQ
 
 - 主分支 `master`
 - 版本标签 `vX.Y.Z`
-- 打标签后 `release.yml` 自动构建 Windows 便携包并创建 Release
+- 打标签后 `release.yml` 构建 Windows 便携包、v1 服务端包与 v2 五平台 Go 二进制，并创建 Release（7 个资产）
 
 ## 报告问题
 
