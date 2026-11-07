@@ -10,7 +10,7 @@ on:
         required: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   windows-bundle:
@@ -116,10 +116,54 @@ jobs:
           path: v2/server/bin/selfshare-server-*
           if-no-files-found: error
 
+  v2-client-bundle:
+    name: v2 Tauri client (Windows installer)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            desktop/core
+            v2/client/src-tauri
+
+      - name: Build Tauri bundle (frontend + installer)
+        working-directory: v2/client
+        shell: pwsh
+        run: |
+          npm ci --no-fund --no-audit
+          npm run tauri build
+          if ($LASTEXITCODE -ne 0) { throw "tauri build failed" }
+
+      - name: Collect artifacts
+        shell: pwsh
+        run: |
+          $nsis = "v2\client\src-tauri\target\release\bundle\nsis"
+          if (Test-Path $nsis) { Get-ChildItem $nsis -Filter *.exe | Select-Object Name, Length }
+          if (-not (Get-ChildItem $nsis -Filter *.exe -ErrorAction SilentlyContinue)) {
+            throw "no NSIS installer produced"
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v2-client-bundle
+          path: v2/client/src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+
   publish:
     name: Publish GitHub Release
-    needs: [windows-bundle, v2-server-assets]
+    needs: [windows-bundle, v2-server-assets, v2-client-bundle]
     runs-on: ubuntu-latest
+    # 只有发布 job 需要写权限，构建 job 保持 contents: read。
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -135,6 +179,11 @@ jobs:
           name: v2-server-assets
           path: dist/v2
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: v2-client-bundle
+          path: dist/v2
+
       - name: Extract release notes from CHANGELOG
         id: notes
         run: |
@@ -142,15 +191,17 @@ jobs:
           TAG="${{ github.event.inputs.tag }}"
           if [ -z "$TAG" ]; then TAG="${GITHUB_REF_NAME}"; fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          # 取 CHANGELOG 中该版本小节；找不到则用整份文件
-          # 用字符串包含定位版本标题，兼容 "# v2.0.0" 与 "# [v2.0.0]" 且无转义差异；
-          # 停止条件只认一级标题，避免 "## v2：..." 等小节标题提前截断。
+          # 取 CHANGELOG 中该版本小节。只认一级标题（"# [vX.Y.Z]" 或 "# vX.Y.Z"），
+          # 未命中直接失败：把整份 CHANGELOG 当 notes 发布属于事故，不做兜底。
           awk -v t="${TAG#v}" '
-            !f && /^#+ / && index($0, t) {f=1; next}
+            !f && /^# / && (index($0, "[" t "]") || index($0, "v" t)) {f=1; next}
             f && /^# / {exit}
             f {print}
           ' CHANGELOG.md > notes.md
-          if [ ! -s notes.md ]; then cp CHANGELOG.md notes.md; fi
+          if [ ! -s notes.md ]; then
+            echo "::error::CHANGELOG.md has no '# [${TAG}]' section; fix the heading before tagging"
+            exit 1
+          fi
           echo "--- notes ---"; cat notes.md
 
       - uses: softprops/action-gh-release@v2
@@ -159,9 +210,13 @@ jobs:
           tag_name: ${{ steps.notes.outputs.tag }}
           name: SelfShare ${{ steps.notes.outputs.tag }}
           body_path: notes.md
+          # 8 个资产，glob 互斥避免同一文件被两条模式重复命中：
+          # 2 便携包/服务端包 zip + 5 平台服务端二进制 + 1 个 NSIS 安装包
+          #（Tauri 产物名为 productName_version_arch-setup.exe）。
           files: |
             dist/*.zip
             dist/v2/selfshare-server-*
+            dist/v2/SelfShare_*.exe
           draft: false
           prerelease: false
           fail_on_unmatched_files: true

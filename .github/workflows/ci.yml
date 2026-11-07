@@ -194,3 +194,78 @@ jobs:
           name: selfshare-desktop-windows-x64
           path: desktop/app/build/windows/x64/runner/Release/**
           if-no-files-found: error
+
+  # ---- v2 收敛架构（Go 服务端 + Tauri 客户端）：远程流水线做完整编译检查 ----
+
+  v2-server:
+    name: v2 Go server (vet/test/docker)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: v2/server/go.sum
+
+      - name: Vet
+        working-directory: v2/server
+        run: go vet ./...
+
+      - name: Test
+        working-directory: v2/server
+        run: go test -race ./...
+
+      - name: Cross-compile smoke (linux/windows)
+        working-directory: v2/server
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          GOOS=linux   GOARCH=amd64 go build -trimpath -o /dev/null ./cmd/selfshare-server
+          GOOS=windows GOARCH=amd64 go build -trimpath -o /dev/null ./cmd/selfshare-server
+
+      - name: Docker image build
+        working-directory: v2/server
+        run: docker build -t selfshare-server:ci .
+
+      - name: Docker smoke (serve + ping)
+        working-directory: v2/server
+        run: |
+          docker run -d --rm --name ss-ci -p 8585:8585 selfshare-server:ci \
+            --root /data --host 0.0.0.0 --port 8585
+          ok=""
+          for i in $(seq 1 15); do
+            if wget -qO- http://127.0.0.1:8585/api/ping | grep -q '"ok":true'; then ok=1; break; fi
+            sleep 1
+          done
+          docker stop ss-ci
+          test -n "$ok" || { echo "::error::server did not answer /api/ping"; exit 1; }
+
+  v2-client:
+    name: v2 Tauri client (compile check)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            desktop/core
+            v2/client/src-tauri
+
+      # frontendDist("../dist") 在 .gitignore 里，必须先构建前端，Tauri 代码生成才能通过
+      - name: Build frontend (vite)
+        working-directory: v2/client
+        run: |
+          npm install --no-fund --no-audit
+          npm run build
+
+      - name: Cargo check (server kernel + tauri client)
+        working-directory: v2/client/src-tauri
+        run: cargo check --all-targets
