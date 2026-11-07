@@ -259,14 +259,23 @@ class SyncTestCase(unittest.TestCase):
 
         Server 存的是客户端发来的原始 rel；若只有 norm_rel，Windows 上
         ``C:/Windows/x.txt`` 会解析到 vault 之外，读写都会越界。
+        POSIX 上 ``C:/...`` 不是盘符而是普通相对路径，不会逃逸 vault，
+        因此期望行为按宿主 OS 区分（Rust / Go 同样按 OS 解析）。
         """
         from selfshare.util import abs_path
 
         root = tempfile.mkdtemp(prefix="selfshare-abs-")
         try:
-            for escape in ("C:/Windows/x.txt", "C:rel/x.txt", "D:/y.txt"):
-                with self.assertRaises(ValueError, msg=escape):
-                    abs_path(root, escape)
+            drives = ("C:/Windows/x.txt", "C:rel/x.txt", "D:/y.txt")
+            if os.name == "nt":
+                for escape in drives:
+                    with self.assertRaises(ValueError, msg=escape):
+                        abs_path(root, escape)
+            else:
+                # 盘符段在 POSIX 只是普通目录名；红线是「不逃出 vault」。
+                for drive in drives:
+                    resolved = abs_path(root, drive)
+                    self.assertTrue(resolved.startswith(root + os.sep), resolved)
             for ok in ("a/b.txt", "sub/dir/名字.md"):
                 resolved = abs_path(root, ok)
                 self.assertTrue(resolved.startswith(root + os.sep), resolved)
