@@ -40,6 +40,8 @@ desktop.ini
 # 测试/QA 临时
 tests/__pycache__/
 *.log
+.ss-tmp/
+.ss-artifacts/
 
 # 敏感配置（令牌、密钥）
 *.pem
@@ -49,8 +51,12 @@ server.env
 
 # 开发缓存
 .box-agent-scratch/
+.box-agent/
 .vs/
 .idea/
+
+# 根目录打包产物（专家包 zip 等）
+/*.zip
 
 # v2 / Tauri：本地构建产物可达 GB 级，绝不入库
 **/target/

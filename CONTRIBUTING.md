@@ -15,6 +15,12 @@
 python -m compileall -q selfshare tests
 python tests/test_sync.py
 python tests/test_p2p.py
+python tests/test_pairing.py
+
+# 跨实现兼容（同一套 Python 用例打到真实 Go 二进制；路径用绝对路径）
+# bash / WSL / CI：
+SELFSHARE_SERVER_BIN="$(pwd)/v2/server/bin/selfshare-server" python tests/test_sync.py -v
+SELFSHARE_SERVER_BIN="$(pwd)/v2/server/bin/selfshare-server" python tests/test_p2p.py -v
 
 # Rust
 cd desktop/core
@@ -33,10 +39,34 @@ cd ../client && npm ci && npm run build
 cd src-tauri && cargo build && cargo test --test engine_state
 
 # 并发上传基准（回到仓库根后执行，需先构建 Go 二进制）
-cd ../../../..
+cd ../../..
 python v2/scripts/bench_upload.py --server v2/server/bin/selfshare-server.exe
 python v2/scripts/bench_ab.py --server-a v2/server/bin/selfshare-server.exe --build-baseline --repeats 3
 ```
+
+## 远程构建 ↔ 本地验证循环
+
+本机缺少 `cargo` / `go` / `flutter` / `docker` 时，用远程流水线当编译农场，本地只跑测试：
+
+1. **本地开发**：改 `desktop/core/`（Rust）、`v2/server/`（Go）等，本地能跑的层先跑（`compileall`、纯 Python 套件）。
+2. **推送触发构建**：push 到 `master` 后 `ci.yml` 自动编译并上传 Rust 内核产物 `selfshare-core-windows`（`selfshare_core.dll`），`ci-v2.yml` 上传 5 平台 Go 二进制 `server-<goos>-<goarch>`。
+3. **下载产物**（无 `gh` CLI 也可用；鉴权优先 `GITHUB_TOKEN`，否则复用本机 git 凭据，不回显）：
+
+   ```bash
+   python desktop/scripts/ci_fetch.py runs --workflow ci.yml --limit 5
+   python desktop/scripts/ci_fetch.py fetch selfshare-core-windows --out .ss-artifacts
+   python desktop/scripts/ci_fetch.py fetch server-windows-amd64 --workflow ci-v2.yml --out .ss-artifacts
+   ```
+
+4. **本地测试**：
+
+   ```bash
+   SELFSHARE_CORE_DLL="$(pwd)/.ss-artifacts/selfshare_core.dll" python tests/test_core_dll.py -v
+   SELFSHARE_SERVER_BIN="$(pwd)/.ss-artifacts/selfshare-server-windows-amd64.exe" python tests/test_sync.py -v
+   SELFSHARE_SERVER_BIN="$(pwd)/.ss-artifacts/selfshare-server-windows-amd64.exe" python tests/test_p2p.py -v
+   ```
+
+5. **回到第 1 步**：按失败输出继续开发。release 便携包（`SelfShare-<ver>-windows-x64.zip`）里的 `selfshare_core.dll` 同样可直接作为 `SELFSHARE_CORE_DLL` 使用；`.ss-artifacts/` 已被 `.gitignore` 忽略。
 
 ## 代码约定
 
@@ -69,7 +99,16 @@ docs(wiki): add FAQ
 
 - 主分支 `master`
 - 版本标签 `vX.Y.Z`
-- 打标签后 `release.yml` 构建 Windows 便携包、v1 服务端包与 v2 五平台 Go 二进制，并创建 Release（7 个资产）
+- 打标签后 `release.yml` 构建 Windows 便携包、v1 服务端包、v2 五平台 Go 二进制与 v2 Tauri 客户端安装包，并创建 Release（8 个资产；历史 `v2.0.0` 为 7 个）
+
+## CI/CD 工作流
+
+- `ci.yml` / `ci-v2.yml`：PR 与全平台构建测试门禁（Python / Rust / Flutter / Tauri / Go）
+- `pages.yml`：`docs/` Jekyll 文档站 -> GitHub Pages
+- `release.yml`：`v*` 标签 -> GitHub Release
+- `build-test-deploy.yml`：`master` / `v*` 上的发布流水线，先跑构建与回归测试，再构建并冒烟 Docker 镜像，推送到 `ghcr.io/<owner>/<repo>`（`latest`、版本、`sha-xxxxxxx` 标签），最后可选 SSH 滚动部署到自托管服务器
+
+推送 GHCR 用内置 `GITHUB_TOKEN`；远程部署所需的变量与密钥列在 `build-test-deploy.yml` 顶部注释中。未配置 `DEPLOY_HOST` 时只发布镜像，不会接触线上服务。
 
 ## 报告问题
 
