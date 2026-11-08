@@ -53,13 +53,14 @@ impl SyncEngine {
         }
     }
 
-    fn persist(&self) {
+    fn persist(&self) -> Result<(), String> {
         let snapshot: Vec<MountConfig> =
             self.reg.lock().unwrap().mounts.values().cloned().collect();
+        let raw = serde_json::to_vec_pretty(&snapshot).map_err(|e| e.to_string())?;
         let path = self.config_dir.join("registry.json");
-        if let Ok(raw) = serde_json::to_vec_pretty(&snapshot) {
-            let _ = std::fs::write(path, raw);
-        }
+        // 与 save_settings 对齐：原子写同目录临时文件后 rename；落盘失败不再被吞，
+        // 由 add_mount / remove_mount 的 `?` 传播到 IPC，避免前端误报成功。
+        util::atomic_write(&path, &raw).map_err(|e| e.to_string())
     }
 
     fn mount(&self, name: &str) -> Result<MountConfig, String> {
@@ -87,7 +88,8 @@ impl SyncEngine {
 
     pub fn save_settings(&self, s: &Settings) -> Result<(), String> {
         let raw = serde_json::to_vec_pretty(s).map_err(|e| e.to_string())?;
-        std::fs::write(self.settings_path(), raw).map_err(|e| e.to_string())
+        let path = self.settings_path();
+        util::atomic_write(&path, &raw).map_err(|e| e.to_string())
     }
 
     pub fn is_paused(&self) -> bool {
@@ -181,7 +183,7 @@ impl SyncEngine {
             .map_err(|e| e.to_string())??;
 
         self.reg.lock().unwrap().mounts.insert(m.name.clone(), m);
-        self.persist();
+        self.persist()?;
         Ok(())
     }
 
@@ -195,7 +197,7 @@ impl SyncEngine {
             g.last.remove(name);
             g.syncing.remove(name);
         }
-        self.persist();
+        self.persist()?;
         Ok(())
     }
 

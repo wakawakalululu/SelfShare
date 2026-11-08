@@ -125,3 +125,83 @@ fn restore_keeps_local_unsynced_edit() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// §5.3 合规回归：save_settings 走原子写后，磁盘内容仍是与
+/// `serde_json::to_vec_pretty` 完全一致的序列化字节，且不残留同目录临时文件；
+/// 模拟重启后字段逐一还原。纯本地文件 IO，不依赖网络 / 权限。
+#[test]
+fn settings_atomic_roundtrip_keeps_serialized_bytes() {
+    let dir = temp_dir("atomic-settings");
+    let engine = SyncEngine::new(dir.clone());
+
+    let updated = Settings {
+        default_server_url: "https://192.168.1.11:9443".to_string(),
+        sync_interval_secs: 30,
+        enable_p2p: true,
+        ..Settings::default()
+    };
+    let expected = serde_json::to_vec_pretty(&updated).expect("序列化设置失败");
+    engine.save_settings(&updated).expect("原子保存设置失败");
+
+    let path = dir.join("settings.json");
+    let on_disk = std::fs::read(&path).expect("读取 settings.json 失败");
+    // 1) 写盘字节 == 序列化字节（路径、JSON 结构、字段名均不变）。
+    assert_eq!(on_disk, expected, "落盘字节与序列化结果不一致");
+
+    // 2) 原子写 rename 后不应留下 `*.selfshare-tmp-*` 临时文件。
+    for entry in std::fs::read_dir(&dir).expect("读取配置目录失败") {
+        let name = entry.expect("遍历配置目录失败").file_name();
+        let name = name.to_string_lossy();
+        assert!(
+            !name.contains("selfshare-tmp-"),
+            "原子写残留临时文件：{}",
+            name
+        );
+    }
+
+    // 3) 模拟重启：新实例读回同一份配置。
+    let reloaded = SyncEngine::new(dir.clone()).load_settings();
+    assert_eq!(reloaded.default_server_url, updated.default_server_url);
+    assert_eq!(reloaded.sync_interval_secs, 30);
+    assert!(reloaded.enable_p2p);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// 现有行为回归：load_settings 对损坏 / 类型错误的 settings.json 静默回退
+/// 默认值（unwrap_or_default），且不改写磁盘上的损坏文件；随后仍可正常覆盖保存。
+/// 断言严格基于当前行为，不改变契约。
+#[test]
+fn corrupt_settings_falls_back_to_defaults_and_is_observable() {
+    let dir = temp_dir("corrupt-settings");
+    std::fs::create_dir_all(&dir).expect("创建临时目录失败");
+    let path = dir.join("settings.json");
+
+    // (a) 非 JSON 文本：整体解析失败 → Default。
+    let broken: &[u8] = b"{ this is not valid json";
+    std::fs::write(&path, broken).expect("写入损坏文件失败");
+    let engine = SyncEngine::new(dir.clone());
+    let loaded = engine.load_settings();
+    assert_eq!(loaded.sync_interval_secs, 10);
+    assert!(!loaded.enable_p2p);
+    assert_eq!(loaded.default_server_url, "http://127.0.0.1:8484");
+    assert_eq!(loaded.theme, "system");
+    assert!(loaded.show_notifications);
+    assert!(!loaded.auto_start);
+    // 回退是纯内存行为：磁盘上的损坏内容原样保留，未被 load_settings 改写。
+    assert_eq!(std::fs::read(&path).unwrap().as_slice(), broken);
+
+    // (b) 合法 JSON 但字段类型错误：同样整体回退默认值。
+    std::fs::write(&path, b"{\"sync_interval_secs\": \"oops\"}").expect("写入类型错误文件失败");
+    let loaded2 = SyncEngine::new(dir.clone()).load_settings();
+    assert_eq!(loaded2.sync_interval_secs, 10);
+
+    // (c) 回退之后仍可覆盖修复，新实例读到新值。
+    let repaired = Settings {
+        sync_interval_secs: 42,
+        ..Settings::default()
+    };
+    engine.save_settings(&repaired).expect("覆盖修复失败");
+    let reloaded = SyncEngine::new(dir.clone()).load_settings();
+    assert_eq!(reloaded.sync_interval_secs, 42);
+    let _ = std::fs::remove_dir_all(&dir);
+}
