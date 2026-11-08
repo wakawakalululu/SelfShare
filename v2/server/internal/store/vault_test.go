@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -87,6 +88,69 @@ func TestCommitDeleteTombstoneAndForceResurrect(t *testing.T) {
 	}
 }
 
+func TestHeadRevMonotonicAndVersionsAppendOnly(t *testing.T) {
+	v := tempVault(t)
+	a, _ := v.PutBlobBytes([]byte("v1"))
+	b, _ := v.PutBlobBytes([]byte("v2"))
+
+	// 第一次有效提交：head_rev 0 -> 1，versions 落 1 条。
+	res1, err := v.Commit([]Op{putOp("hist.txt", a, nil)}, "h1")
+	if err != nil || len(res1.Applied) != 1 || res1.HeadRev != 1 {
+		t.Fatalf("first commit: res=%+v err=%v", res1, err)
+	}
+	if got := v.HeadRev(); got != 1 {
+		t.Fatalf("HeadRev after first commit = %d, want 1", got)
+	}
+	st1, err := v.Stat()
+	if err != nil || st1.HeadRev != 1 || st1.Versions != 1 {
+		t.Fatalf("stat after first commit: %+v err=%v", st1, err)
+	}
+	h1, err := v.History("hist.txt", 10)
+	if err != nil || len(h1) != 1 || h1[0].Rev != 1 || h1[0].Action != "put" {
+		t.Fatalf("history after first commit: %+v err=%v", h1, err)
+	}
+
+	// 第二次提交改写同一路径：head_rev 必须严格递增，旧版本条目不得被清理/改写。
+	res2, err := v.Commit([]Op{putOp("hist.txt", b, strPtr(a))}, "h2")
+	if err != nil || len(res2.Applied) != 1 || res2.HeadRev <= res1.HeadRev {
+		t.Fatalf("second commit: res=%+v err=%v", res2, err)
+	}
+	if got := v.HeadRev(); got != res2.HeadRev || got <= res1.HeadRev {
+		t.Fatalf("HeadRev = %d, want %d (> %d)", got, res2.HeadRev, res1.HeadRev)
+	}
+	st2, err := v.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st2.HeadRev <= st1.HeadRev {
+		t.Fatalf("Stat.HeadRev not monotonic: %d -> %d", st1.HeadRev, st2.HeadRev)
+	}
+	if st2.Versions <= st1.Versions {
+		t.Fatalf("versions must be append-only: %d -> %d", st1.Versions, st2.Versions)
+	}
+
+	// History 按 id DESC 返回；两条版本都必须还在，且 rev 单调递增。
+	h2, err := v.History("hist.txt", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(h2) != 2 {
+		t.Fatalf("history must retain both revisions, got %d: %+v", len(h2), h2)
+	}
+	if h2[0].Rev != res2.HeadRev || h2[1].Rev != res1.HeadRev || h2[0].Rev <= h2[1].Rev {
+		t.Fatalf("history revs not append-only/monotonic: %+v", h2)
+	}
+	if h2[1].Hash == nil || *h2[1].Hash != a {
+		t.Fatalf("first revision was rewritten/lost: %+v", h2[1])
+	}
+
+	// Manifest(since=0) 的 head_rev 回参与 HeadRev() 一致。
+	_, manifestRev, err := v.Manifest(0)
+	if err != nil || manifestRev != v.HeadRev() {
+		t.Fatalf("Manifest head_rev = %d, HeadRev = %d, err=%v", manifestRev, v.HeadRev(), err)
+	}
+}
+
 func TestCommitRejectsTraversal(t *testing.T) {
 	v := tempVault(t)
 	d, _ := v.PutBlobBytes([]byte("x"))
@@ -129,5 +193,54 @@ func TestNormRelAndAbsPathContainment(t *testing.T) {
 	got, err := AbsPath(root, "blobs/ab/abcd")
 	if err != nil || filepath.Clean(got) != filepath.Clean(filepath.Join(root, "blobs", "ab", "abcd")) {
 		t.Fatalf("AbsPath: %q %v", got, err)
+	}
+
+	// 表驱动补充：盘符 / 绝对路径 / .. 逃逸 / 正常相对路径。
+	// 期望值按 AbsPath 的契约构造（NormRel → filepath.Join），
+	// 并显式核对结果仍在 root 内，防止 containment 回归。
+	cleanRoot := filepath.Clean(root) + string(os.PathSeparator)
+	cases := []struct {
+		name     string
+		rel      string
+		wantNorm string // NormRel 的期望输出；wantErr 时为 ""
+		wantErr  bool
+	}{
+		{"windows drive letter is a plain relative segment", "C:/Windows/x.txt", "C:/Windows/x.txt", false},
+		{"windows-style absolute path is normalised", "C:\\Windows\\x.txt", "C:/Windows/x.txt", false},
+		{"posix absolute path is normalised", "/etc/passwd", "etc/passwd", false},
+		{"parent traversal is rejected", "blobs/../../etc/passwd", "", true},
+		{"bare dotdot is rejected", "..", "", true},
+		{"nested dotdot is rejected", "a/../b/../../c", "", true},
+		{"normal relative path", "blobs/ab/abcd", "blobs/ab/abcd", false},
+		{"dot and empty segments are collapsed", ".\\a\\./b//c/", "a/b/c", false},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			norm, normErr := NormRel(tc.rel)
+			if tc.wantErr {
+				if normErr == nil {
+					t.Fatalf("NormRel(%q) = %q, want error", tc.rel, norm)
+				}
+				if _, err := AbsPath(root, tc.rel); err == nil {
+					t.Fatalf("AbsPath(%q) must reject escape", tc.rel)
+				}
+				return
+			}
+			if normErr != nil || norm != tc.wantNorm {
+				t.Fatalf("NormRel(%q) = %q, %v; want %q", tc.rel, norm, normErr, tc.wantNorm)
+			}
+			out, err := AbsPath(root, tc.rel)
+			if err != nil {
+				t.Fatalf("AbsPath(%q) must stay inside root: %v", tc.rel, err)
+			}
+			want := filepath.Join(root, filepath.FromSlash(tc.wantNorm))
+			if filepath.Clean(out) != filepath.Clean(want) {
+				t.Fatalf("AbsPath(%q) = %q, want %q", tc.rel, out, want)
+			}
+			if !strings.HasPrefix(filepath.Clean(out)+string(os.PathSeparator), cleanRoot) {
+				t.Fatalf("AbsPath(%q) escaped root: %q", tc.rel, out)
+			}
+		})
 	}
 }

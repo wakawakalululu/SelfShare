@@ -6,6 +6,10 @@ import (
 	"time"
 )
 
+// placeholderCodeBody 是 SS-XXXX-XXXX-XXXX 形态的占位码体，仅用于测试；
+// 避免真实形态配对码出现在代码里（AGENTS.md §5.4）。
+const placeholderCodeBody = "XXXXXXXXXXXX"
+
 func TestPairCodeIssueAndRedeemOnce(t *testing.T) {
 	p := NewPairCodeStore(t.TempDir())
 	code, expires, err := p.Issue("default", 600, "unit-test")
@@ -57,22 +61,22 @@ func TestPairCodeExpiryAndRevoke(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := float64(time.Now().UnixNano()) / 1e9
-	f.Codes["EXPIRED"] = &pairCode{
+	f.Codes[placeholderCodeBody] = &pairCode{
 		Vault: "v2", CreatedAt: now - 100, ExpiresAt: now - 1, Note: "expired",
 	}
 	if err := p.save(f); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, ok := p.Redeem("SS-EXPI-RED"); ok {
+	if _, _, ok := p.Redeem(FormatCode(placeholderCodeBody)); ok {
 		t.Fatal("过期配对码被兑换")
 	}
 }
 
 func TestNormaliseAndFormatCode(t *testing.T) {
-	if got := NormaliseCode(" ss-5t8y-e3fa-thv3 "); got != "5T8YE3FATHV3" {
+	if got := NormaliseCode(" ss-xxxx-xxxx-xxxx "); got != placeholderCodeBody {
 		t.Fatalf("NormaliseCode = %q", got)
 	}
-	if got := FormatCode("5T8YE3FATHV3"); got != "SS-5T8Y-E3FA-THV3" {
+	if got := FormatCode(placeholderCodeBody); got != "SS-XXXX-XXXX-XXXX" {
 		t.Fatalf("FormatCode = %q", got)
 	}
 }
