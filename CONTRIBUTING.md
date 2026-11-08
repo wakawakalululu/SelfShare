@@ -38,6 +38,26 @@ go test ./... && go vet ./...
 cd ../client && npm ci && npm run build
 cd src-tauri && cargo build && cargo test --test engine_state
 
+# HTTPS 自签 + GET /api/pair 冒烟（bash/WSL；复现 ci-v2.yml `compat` 同名步骤）
+d="$(mktemp -d)"
+(cd v2/server && go build -o "$d/selfshare-server" ./cmd/selfshare-server)
+openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=localhost" \
+  -keyout "$d/key.pem" -out "$d/cert.pem"
+"$d/selfshare-server" --root "$d/data" --host 127.0.0.1 --port 18585 \
+  --cert "$d/cert.pem" --key "$d/key.pem" --quiet > "$d/server.log" 2>&1 &
+pid=$!
+trap 'kill "$pid" 2>/dev/null; rm -rf "$d"' EXIT
+for i in $(seq 1 30); do
+  curl -kfsS --max-time 2 https://127.0.0.1:18585/api/ping -o "$d/ping.json" 2>>"$d/probe.log" \
+    && curl -kfsS --max-time 2 https://127.0.0.1:18585/api/pair -o "$d/pair.json" 2>>"$d/probe.log" && break
+  sleep 0.5
+done
+grep -q '"version":"1.0"' "$d/pair.json" && grep -q '"pairing":true' "$d/pair.json"
+
+# tag 存在性断言（复现 release.yml `publish` 的 Assert requested tag exists；与 dispatch "Existing tag" 输入一致）
+TAG="v2.0.0"
+test "$(git tag -l "$TAG")" = "$TAG" && git rev-parse --verify --quiet "refs/tags/$TAG"
+
 # 并发上传基准（回到仓库根后执行，需先构建 Go 二进制）
 cd ../../..
 python v2/scripts/bench_upload.py --server v2/server/bin/selfshare-server.exe

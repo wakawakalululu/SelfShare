@@ -169,6 +169,37 @@ jobs:
         with:
           fetch-depth: 0
 
+      # workflow_dispatch 的 tag 输入描述是 "Existing tag to publish"：先断言 tag 真实存在。
+      # 放在 notes 之前，故不依赖 steps.notes.outputs.tag（那时还未产生）。
+      - name: Assert requested tag exists
+        shell: bash
+        env:
+          REQUESTED_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          # GitHub 表达式放在 env 里，避免其进入 run 块（便于 bash -n 与防注入）；
+          # 与下方 notes 步骤一致：dispatch 输入优先，否则用触发 ref 名。
+          TAG="$REQUESTED_TAG"
+          if [ -z "$TAG" ]; then
+            echo "::error::no tag resolved (inputs.tag and ref_name both empty)"
+            exit 1
+          fi
+          echo "requested tag: $TAG"
+          # fetch-depth: 0 保证本地 tag 引用齐全；精确匹配，不接受通配/模糊名。
+          MATCH="$(git tag -l "$TAG")"
+          if [ "$MATCH" != "$TAG" ]; then
+            echo "::error::tag '$TAG' does not exist; dispatch requires an existing tag"
+            echo "--- available v* tags ---"
+            git tag -l 'v*' --sort=-version:refname | sed -n '1,30p'
+            exit 1
+          fi
+          if ! git rev-parse --verify --quiet "refs/tags/$TAG" >/dev/null; then
+            echo "::error::refs/tags/$TAG is not a resolvable object"
+            exit 1
+          fi
+          OID="$(git rev-parse "refs/tags/$TAG")"
+          echo "tag '$TAG' -> $OID"
+
       - uses: actions/download-artifact@v4
         with:
           name: release-assets

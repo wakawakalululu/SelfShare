@@ -143,6 +143,85 @@ jobs:
           SELFSHARE_SERVER_BIN: ${{ runner.temp }}/selfshare-server
         run: python tests/test_p2p.py -v
 
+      # AGENTS.md §6 缺口：HTTPS 自签 + /api/pair 冒烟此前无 CI 覆盖。
+      # 复用本 job "Build Go server binary" 产出的 $RUNNER_TEMP/selfshare-server，不重复编译。
+      - name: HTTPS self-signed + GET /api/pair smoke
+        shell: bash
+        env:
+          SELFSHARE_SERVER_BIN: ${{ runner.temp }}/selfshare-server
+        run: |
+          set -euo pipefail
+          BIN="$SELFSHARE_SERVER_BIN"
+          if [ ! -x "$BIN" ]; then
+            echo "::error::reusable Go server binary missing: $BIN"
+            exit 1
+          fi
+
+          SS_TMP=""
+          SS_PID=""
+          cleanup() {
+            status=$?
+            set +e
+            if [ -n "$SS_PID" ]; then
+              kill "$SS_PID" 2>/dev/null
+              wait "$SS_PID" 2>/dev/null
+            fi
+            if [ -n "$SS_TMP" ]; then
+              rm -rf "$SS_TMP"
+            fi
+            exit "$status"
+          }
+          trap cleanup EXIT
+
+          SS_TMP="$(mktemp -d "${RUNNER_TEMP:-/tmp}/ss-https.XXXXXX")"
+          : > "$SS_TMP/probe.log"
+          # -nodes 生成无口令私钥；curl -k 跳过自签证书校验，无需 CA / SAN。
+          openssl req -x509 -newkey rsa:2048 -nodes \
+            -keyout "$SS_TMP/key.pem" -out "$SS_TMP/cert.pem" \
+            -days 1 -subj "/CN=localhost"
+
+          # --cert 非空即走 ServeTLS；--quiet 避免启动配对码写进 CI 日志。
+          "$BIN" --root "$SS_TMP/data" --host 127.0.0.1 --port 18585 \
+            --cert "$SS_TMP/cert.pem" --key "$SS_TMP/key.pem" --quiet \
+            > "$SS_TMP/server.log" 2>&1 &
+          SS_PID=$!
+
+          BASE="https://127.0.0.1:18585"
+          ready=""
+          for i in $(seq 1 30); do
+            if ! kill -0 "$SS_PID" 2>/dev/null; then
+              echo "::error::HTTPS server exited before becoming ready"
+              echo "--- server.log ---"; cat "$SS_TMP/server.log"
+              echo "--- probe.log ---"; cat "$SS_TMP/probe.log"
+              exit 1
+            fi
+            if curl -kfsS --max-time 2 "$BASE/api/ping" -o "$SS_TMP/ping.json" 2>>"$SS_TMP/probe.log" \
+               && curl -kfsS --max-time 2 "$BASE/api/pair" -o "$SS_TMP/pair.json" 2>>"$SS_TMP/probe.log"; then
+              ready=1
+              break
+            fi
+            sleep 0.5
+          done
+          if [ -z "$ready" ]; then
+            echo "::error::HTTPS /api/ping + /api/pair never became ready"
+            echo "--- server.log ---"; cat "$SS_TMP/server.log"
+            echo "--- probe.log ---"; cat "$SS_TMP/probe.log"
+            exit 1
+          fi
+
+          # Go 常量 ServiceVersion = "1.0"（internal/api/api.go），HTTP 字段名是 "version"。
+          grep -q '"engine":"go"' "$SS_TMP/ping.json" || {
+            echo "::error::/api/ping lacks engine=go"; cat "$SS_TMP/ping.json"; exit 1; }
+          grep -q '"version":"1.0"' "$SS_TMP/ping.json" || {
+            echo "::error::/api/ping lacks version 1.0"; cat "$SS_TMP/ping.json"; exit 1; }
+          # GET /api/pair 只回显服务信息（无副作用、不消耗配对码）；POST 才换令牌。
+          grep -q '"version":"1.0"' "$SS_TMP/pair.json" || {
+            echo "::error::/api/pair lacks version 1.0"; cat "$SS_TMP/pair.json"; exit 1; }
+          grep -q '"pairing":true' "$SS_TMP/pair.json" || {
+            echo "::error::/api/pair lacks pairing=true"; cat "$SS_TMP/pair.json"; exit 1; }
+
+          echo "HTTPS self-signed + GET /api/pair smoke passed (version 1.0 over TLS)"
+
   docker:
     name: Docker image + /api/ping smoke
     needs: server-test
