@@ -32,3 +32,26 @@
 ## O-4 · `SELFSHARE_SEAL_KEY` 只有 Go 端读取，是支持还是移除
 
 **已裁决（2026-11-08）：保持现状 + 文档警示，见 `ADR-002-seal-key-env.md`。**
+
+## O-5 · C ABI 返回 JSON 是否就地统一为 `ok_json`（**v2 变更**）
+
+- 背景：`requirement-card.md` §8 把「3 个裸 JSON、`ss_probe` 双层 `ok`、NUL 错误分支缺 `ok`」
+  移交 D 轨道。静态盘点确认 `ss_version` / `ss_progress` / `ss_watch_status` 为裸 JSON
+  （`ffi.rs:99/:431/:537`），形状已被 Dart 3 个方法（`rust_bridge.dart:148/:228/:249`）、
+  Python 3 个用例（`test_core_dll.py:68-72/:88-94/:101`）、Rust 集成测试
+  （`integration.rs:386-398`）锁定，属**已发布行为**。
+- 变更性质：**不可兼容**。就地包装会使 Dart 顶层字段取值变 `null`、Python 冒烟断言失败、
+  `integration.rs` 子串断言**静默假通过**；`SELFSHARE_CORE_DLL` 冒烟针对 CI / Release 产物
+  （`AGENTS.md:66/:112`），旧 GUI / 旧测试配新 DLL 混跑必挂。触及 `AGENTS.md:98/:104` 红线。
+- 影响说明：详见 `docs/contracts/abi-ipc.md` C5-2 / C5-3 / C5-5。下游 3 处实现 + 2 组测试
+  + 文档 5 处须同步；门禁为 L1 `core-dll-smoke` 与 L2 Rust 集成，**L4 不适用**；
+  C6 安全契约不受影响；`ServiceVersion` 保持 `1.0`。
+- 选项：1) **冻结现状**，以 `abi-ipc.md` 把两种形状升格为契约，未来用「新增 ABI +
+  旧 ABI 并存」演进；2) 就地统一，须标 v2 大版本、重跑 L1 / L2 / L6 并作废便携包内
+  DLL 混跑兼容承诺。
+- 建议：**选 1**（2026-11-08 D 轨道 G0/G1 已按此落盘契约）。本轮只做契约与文档澄清，
+  `ss_find_mount` 补绑定另立单元；任何形状改动停在 G0 等拍板。
+- 待拍板：协议架构师 + 客户端工程师（Dart）+ 发布运维。不拍板的后果：一旦有人
+  「顺手统一」，旧产物冒烟套件与已发布 GUI 将同时失效且难以归因。
+- 验证状态：本条为**静态影响面分析，未实跑任何测试 / 构建**；契约落盘后由
+  `AGENTS.md` §6 的既有 job 守护形状回归。
