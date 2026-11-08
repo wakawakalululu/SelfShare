@@ -6,7 +6,7 @@
 | 版本 | 服务端 `2.0.0`（`--version`）；HTTP `ServiceVersion` 保持 `1.0` 以兼容 v1 客户端 |
 | 记录日期 | 2026-11-04（2026-11-05 推送与 CI 复核更新） |
 | 基线 | `master` `42d67645af534c5eec3c43668311604616381745`；`v1.3.0` tag `714e9ee91cfe0e69ad9fb25e4c3fdc9a37f36d85` |
-| 当前状态 | `master` 已推送至 `acb14ec`，工作区干净；`v2.0.0` 附注 tag（`1c8559c`）与 Release 已发布（7 个资产、notes 51 行、非 draft）；`CI` / `CI v2` / `Pages` / `Release` 最新运行全部 `completed/success`（含 Windows GUI 与 Tauri 打包）；根 CI 编码修复已复验；tag 触发的旧 CI failure 仅为历史记录 |
+| 当前状态（2026-11-08） | `master` == `origin/master` @ `03dc924`，工作区干净；稳定发布 `v2.0.0` 附注 tag（`1c8559c`）与 Release（7 个资产、notes 51 行）保持不变；`release.yml` 演练 run `42424638532` 全绿并发布 `v1.1.0`（8 资产），该演练 Release 按用户决定保留、当前为 `get_latest_release`；发布前 8 资产校验、notes 提取、glob 互斥均由真实流水线实证；`CI`（10 job）/ `CI v2`（9 job）/ `Pages` / `Build, Test & Deploy` 最新运行全部 success；便携包解压即用、包内 DLL 冒烟 6 例、L1 31 例、L4 26 例均通过。下文 §2 起为 v2.0.0 发布时的历史记录，不作当前口径 |
 | 数据来源 | 本机命令输出 + GitHub Actions / Releases API；对照 `v2/README.md`「验证状态」、`PROJECT_STATUS.md` §1.1.1、`CHANGELOG.md` `[v2.0.0]` |
 
 ---

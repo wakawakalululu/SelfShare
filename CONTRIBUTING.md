@@ -99,7 +99,8 @@ docs(wiki): add FAQ
 
 - 主分支 `master`
 - 版本标签 `vX.Y.Z`
-- 打标签后 `release.yml` 构建 Windows 便携包、v1 服务端包、v2 五平台 Go 二进制与 v2 Tauri 客户端安装包，并创建 Release（8 个资产；历史 `v2.0.0` 为 7 个）
+- 打标签（或 `workflow_dispatch` 指定 tag）后 `release.yml` 构建 Windows 便携包、v1 服务端包、v2 五平台 Go 二进制与 v2 Tauri 客户端安装包，并创建 Release（8 个资产；历史 `v2.0.0` 为 7 个）。8 资产口径已由演练 run `42424638532` 实证。
+- **下载提示**：当前 `get_latest_release` 是演练发布 `v1.1.0`（8 资产，由 `2.0.0` 代码构建，notes 为历史 v1.1.0 说明），按用户决定保留、不删除；要获取稳定版请显式指定 `v2.0.0`（7 资产），不要按 latest 判定版本号。
 
 ## CI/CD 工作流
 

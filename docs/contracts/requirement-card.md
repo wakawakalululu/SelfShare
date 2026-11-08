@@ -28,7 +28,7 @@
 
 - CLI/客户端：`abs_path` 对 `C:/x`、`C:rel`、`D:/y` 抛 `ValueError`，错误信息含相对路径要求；正常相对路径行为不变。
 - 发布页：新增 `SelfShare_<ver>_x64-setup.exe` 安装包；服务端二进制仍是 5 平台。
-- 文档：`README.md` / `CONTRIBUTING.md` / `v2/README.md` 的测试数与资产数口径需与实况一致（当前 `CONTRIBUTING.md` 仍写「7 个资产」，实际为 8）。
+- 文档：`README.md` / `CONTRIBUTING.md` / `v2/README.md` 的测试数与资产数口径已统一（8 个资产，历史 `v2.0.0` 为 7 个）；G-3 已由 `release.yml` 演练 run `42424638532` 验收（8 资产真实发布并全部下载校验）。
 
 ## 4. 受影响实现与文件
 
@@ -58,3 +58,17 @@ C6 不豁免：新增的拒绝面必须固化进安全契约，否则三端口�
 | W2 | v2 流水线门禁 + 本地检查脚本 | `ci(v2): gate go server and tauri client in root workflows` |
 | W3 | 发布资产与多架构镜像 | `build(release): publish v2 installer and multi-arch image` |
 | W4 | 规范、专家团与口径对齐 | `docs(repo): land AGENTS.md, expert team and baseline numbers` |
+
+## 8. 后续批次 W6 契约归属（2026-11-08 检修）
+
+| 待办 | 契约面 | 归属 |
+| --- | --- | --- |
+| C ABI 返回 JSON 形状统一（3 个裸 JSON、`ss_probe` 双层 `ok`、NUL 错误分支缺 `ok`） | **C5 ABI 契约** | **移交 `软件开发专家团` D 轨道**：契约先行 + 头文件 / Dart `_unwrap` / `test_core_dll.py` 三处同步 + L4 兼容套件 |
+| Dart bridge 补 `ss_find_mount` 绑定（头文件与 `ffi.rs` 已有，bridge 仅 18 个 lookup） | C5 ABI 下游 | 同上，D 轨道 |
+| `ss_pair` 首次同步失败不复位 `PROGRESS` | `ffi.rs` 返回内容 | 同上，D 轨道评估 |
+| Tauri `save_settings` 改用 `util::atomic_write`；`persist()` 错误传播 | 不改 IPC 签名 / 布局，属 §5.3 合规修复 | 本团可做（需 cargo 环境与 `engine_state` 用例） |
+| Rust/Go 集成测试补齐（containment、`head_rev` 单调、删除撞编辑两向） | 纯测试 | 本团可做 |
+| HTTPS 自签 + `/api/pair` 冒烟补 CI；`release.yml` dispatch 加 tag 存在性断言 | CI / 发布编排 | 本团 02 角色 |
+| NSIS 真实安装 + GUI 窗口冒烟 | 需隔离环境 | 暂缓，不得改本机环境 |
+
+**本团 G0 判定**：触及 C ABI / 返回形状 / Dart bridge 的改动一律停在本团 G0，移交 D 轨道；本团只保留 CI / 产物 / 验证 / 分析四段。本表为下一轮 `LOOP-20261108-06` 的任务卡输入。

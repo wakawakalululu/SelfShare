@@ -20,6 +20,7 @@
 - 新增「远程构建 ↔ 本地验证」循环：`desktop/scripts/ci_fetch.py`（Actions 产物 / Release 资产下载 + SHA256 校验，无 `gh` CLI 可用）与 `tests/test_core_dll.py`（Rust 内核 DLL ctypes 冒烟 6 例，`SELFSHARE_CORE_DLL` 门控）；用法见 CONTRIBUTING「远程构建 ↔ 本地验证循环」。
 - `Dockerfile` 改为 `--platform=$BUILDPLATFORM` + `TARGETOS/TARGETARCH` 交叉编译，避免多架构构建走 QEMU。
 - 新增 `v2/scripts/check.sh` 本地轻量检查；`build-test-deploy.yml` 补齐服务端镜像发布与可选滚动部署。
+- `release.yml` 演练（`workflow_dispatch` / `v1.1.0`）真实产出并发布 8 个资产；发布前资产集合与非空校验、便携包内含 `selfshare_core.dll`、Go 二进制 `--version` 均由流水线实证（run `42424638532`）。本地下载 8 资产按 API `digest` 校验，便携包解压即用 + 包内 DLL 6 例冒烟、L1 31 例、L4 26 例通过。演练 Release 按用户决定保留，`get_latest_release` 暂为 `v1.1.0`，稳定版仍为 `v2.0.0`。
 
 测试口径：Python 31 例（sync 20 / p2p 6 / pairing 5）+ 可选 DLL 冒烟 6 例、Rust 内核 18 例、Go 20 例、Tauri `engine_state` 测试。
 

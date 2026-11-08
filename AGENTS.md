@@ -141,7 +141,8 @@ Windows runner 上跑 CLI 冒烟需 `PYTHONUTF8=1` / `PYTHONIOENCODING=utf-8`（
 - 提交信息 `type(scope): summary`（英文祈使、≤72 字符）；body 必含 **基线 / 范围 / 验证 / 未验证 / 关联编号（R*、P*）/ 追溯引用**，模板见 `PROJECT_STATUS.md` §5.2。
 - 主分支 `master`；`origin/main` 仅含 Initial commit、待人工归档；远程同名 tag `master` 会造成 refspec 歧义，需要写全 `refs/heads/master:refs/heads/master`。
 - `git commit` 由主控统一执行；**`git push` 必须用户明确说出「push / 推送 / 推远程」才可执行**，「保证发布顺畅」不算授权。
-- `v*` 标签触发 `release.yml`：Windows 便携包、v1 服务端包、Go 五平台二进制、Tauri NSIS 安装包，按 `release.yml:208-211` 的 glob 共 **8 个资产**（`v2.0.0` 历史发布为 7 个，新增 `v2-client-bundle` 后为 8 个，待流水线实跑确认）；`dist/v2/*.exe` 会重复命中 Windows 服务端 exe。notes 从 `CHANGELOG.md` 的 `# [vX.Y.Z]` 一级标题提取，标题格式不能改。
+- `v*` 标签或 `workflow_dispatch` 触发 `release.yml`：Windows 便携包、v1 服务端包、Go 五平台二进制、Tauri NSIS 安装包，按 `release.yml` 的 `files:` glob 共 **8 个资产**（`v2.0.0` 历史发布为 7 个；新增 `v2-client-bundle` 后的 8 资产口径已由 run `42424638532` / Release `v1.1.0` 实跑确认）。glob 已改为 `dist/v2/SelfShare_*.exe` 与 `dist/v2/selfshare-server-*` 互斥，不再重复命中。notes 从 `CHANGELOG.md` 的 `# [vX.Y.Z]` 一级标题提取，标题格式不能改。
+- 当前 `get_latest_release` = `v1.1.0`（**演练发布**，8 资产，由 `2.0.0` 代码构建，notes 为历史 v1.1.0 说明）；稳定发布仍是 `v2.0.0`（7 资产）。用户已决定保留该演练 Release，不要删除，也不要把它当作版本升级依据；下载稳定版请显式指定 `v2.0.0`。
 
 ## 9. 专家团使用
 
