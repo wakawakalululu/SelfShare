@@ -322,6 +322,46 @@ mod tests {
     }
 
     #[test]
+    fn abs_path_confines_relative_paths() {
+        let root = std::env::temp_dir().join("selfshare-abs-path-root");
+
+        // 正常相对路径落在 root 内，且反斜杠与正斜杠等价
+        let p = abs_path(&root, "a/b/file.txt").unwrap();
+        assert_eq!(p, root.join("a").join("b").join("file.txt"));
+        assert!(p.starts_with(&root));
+        assert_eq!(abs_path(&root, "a\\b\\file.txt").unwrap(), p);
+
+        // '..' 一律拒绝，不给逃逸机会
+        assert!(abs_path(&root, "../escape.txt").is_err());
+        assert!(abs_path(&root, "a/../../escape.txt").is_err());
+        assert!(abs_path(&root, "a/..\\escape.txt").is_err());
+
+        // 空路径 / 纯分隔符
+        assert!(abs_path(&root, "").is_err());
+        assert!(abs_path(&root, "/").is_err());
+    }
+
+    #[test]
+    fn abs_path_never_escapes_root_for_absolute_or_drive_paths() {
+        let root = std::env::temp_dir().join("selfshare-abs-path-root");
+
+        // Windows 上 PathBuf::push 遇到盘符/绝对路径会替换 root，POSIX 下 norm_rel
+        // 会先吃掉前导 '/' 把它们变成普通相对路径；两种语义下都绝不允许逃出 root：
+        // 要么被拒绝，要么结果仍位于 root 之下（POSIX 下 C:/... 只是普通目录名）。
+        let hostile = [
+            "/etc/passwd",
+            "/tmp/outside.txt",
+            "C:/Windows/win.ini",
+            "C:\\Windows\\win.ini",
+        ];
+        for rel in hostile.iter().copied() {
+            if let Ok(p) = abs_path(&root, rel) {
+                assert!(p.starts_with(&root), "路径 {:?} 逃出了 root：{:?}", rel, p);
+            }
+        }
+    }
+
+    #[test]
     fn glob_behaves_like_fnmatch() {
         assert!(glob_match("*.tmp", "x.tmp"));
         assert!(glob_match("*.tmp", "a/b/x.tmp"));

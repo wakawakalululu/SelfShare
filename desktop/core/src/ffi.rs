@@ -219,7 +219,14 @@ pub unsafe extern "C" fn ss_pair(req_json: *const c_char) -> *mut c_char {
     // 首次同步，让用户配对完就立刻看到内容
     let mut syncer = match make_syncer(&folder.to_string_lossy()) {
         Ok(s) => s,
-        Err(e) => return err_json(e),
+        Err(e) => {
+            set_progress(|p| {
+                p.state = "error".into();
+                p.last_error = Some(e.clone());
+                p.message = format!("首次同步初始化失败：{}", e);
+            });
+            return err_json(e);
+        }
     };
     let mut cb = |msg: &str, cur: usize, total: usize| {
         set_progress(|p| {
@@ -246,12 +253,19 @@ pub unsafe extern "C" fn ss_pair(req_json: *const c_char) -> *mut c_char {
                 "summary": r.summary(),
             }))
         }
-        Err(e) => ok_json(&json!({
-            "vault": vault,
-            "folder": folder.to_string_lossy(),
-            "url": url,
-            "warning": format!("挂载成功，但首次同步失败：{}", e),
-        })),
+        Err(e) => {
+            set_progress(|p| {
+                p.state = "error".into();
+                p.last_error = Some(e.to_string());
+                p.message = format!("挂载成功，但首次同步失败：{}", e);
+            });
+            ok_json(&json!({
+                "vault": vault,
+                "folder": folder.to_string_lossy(),
+                "url": url,
+                "warning": format!("挂载成功，但首次同步失败：{}", e),
+            }))
+        }
     }
 }
 

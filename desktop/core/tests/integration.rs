@@ -355,6 +355,51 @@ fn ffi_surface_roundtrips() {
     }
 }
 
+/// `ss_pair` 失败后必须把 PROGRESS 从 "syncing" 复位，否则 GUI 轮询 `ss_progress`
+/// 会永远停在「同步中」。用刚释放的空闲端口让 `Client::pair` 立即失败，
+/// 不依赖真实服务端（start_server / python）。
+#[test]
+fn ffi_pair_failure_resets_progress() {
+    use std::ffi::{CStr, CString};
+    use std::os::raw::c_char;
+
+    // free_port() 只短暂占用一个本地端口便释放，此处不启动任何监听；
+    // 配合无效配对码，无论该端口是否恰好被其它并行测试占用，pair 都会失败。
+    let port = free_port();
+    let req = format!(
+        "{{\"folder\":\"unused\",\"url\":\"http://127.0.0.1:{}\",\"code\":\"invalid-code\"}}",
+        port
+    );
+
+    unsafe {
+        let input = CString::new(req).unwrap();
+        let out = selfshare_core::ffi::ss_pair(input.as_ptr() as *const c_char);
+        let msg = CStr::from_ptr(out).to_str().unwrap().to_string();
+        selfshare_core::ffi::ss_free(out);
+        assert!(msg.contains("\"ok\":false"), "配对失败应返回错误 JSON：{}", msg);
+
+        // 紧接着读取全局进度快照：失败路径不得遗留 syncing，且必须写入错误信息与文本。
+        let snap = selfshare_core::ffi::ss_progress();
+        let text = CStr::from_ptr(snap).to_str().unwrap().to_string();
+        selfshare_core::ffi::ss_free(snap);
+        assert!(
+            !text.contains("\"state\":\"syncing\""),
+            "失败后不得停留在 syncing：{}",
+            text
+        );
+        assert!(
+            text.contains("\"last_error\":") && !text.contains("\"last_error\":null"),
+            "失败后必须写入 last_error：{}",
+            text
+        );
+        assert!(
+            !text.contains("\"message\":\"\""),
+            "失败后 message 应给出可观测文本：{}",
+            text
+        );
+    }
+}
+
 // --------------------------------------------------------------------------- //
 // P2P：Rust 节点 <-> Python 服务端 / Rust 客户端互通
 // --------------------------------------------------------------------------- //
