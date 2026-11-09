@@ -42,6 +42,9 @@ jobs:
       - name: Byte-compile (syntax gate)
         run: python -m compileall -q selfshare tests
 
+      - name: Byte-compile + CLI help (desktop/scripts, v2/scripts)
+        run: python -m compileall -q desktop/scripts v2/scripts && python desktop/scripts/ci_fetch.py --help
+
       - name: Sync tests
         run: python tests/test_sync.py -v
 

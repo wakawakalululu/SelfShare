@@ -155,7 +155,7 @@ jobs:
   image:
     name: Build + smoke-test Docker image
     runs-on: ubuntu-latest
-    needs: [test-server, test-python, build-frontend]
+    needs: [test-server, test-python, build-frontend, verify-client-dist]
     outputs:
       name: ${{ steps.vars.outputs.name }}
     steps:
