@@ -45,6 +45,9 @@ jobs:
       - name: Byte-compile + CLI help (desktop/scripts, v2/scripts)
         run: python -m compileall -q desktop/scripts v2/scripts && python desktop/scripts/ci_fetch.py --help
 
+      - name: ABI name check script self-tests
+        run: python tests/test_check_abi_names.py -v
+
       - name: Sync tests
         run: python tests/test_sync.py -v
 
@@ -122,7 +125,7 @@ jobs:
           if-no-files-found: error
 
   core-dll-smoke:
-    name: Core DLL smoke (7 gated tests)
+    name: Core DLL smoke (9 gated tests)
     runs-on: windows-latest
     needs: rust
     steps:
@@ -132,7 +135,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Check ABI symbol names (C header / Dart lookup / DLL smoke)
+      - name: Check ABI symbol names (C header / Rust exports / Dart lookup / DLL smoke)
         shell: pwsh
         run: |
           python desktop/scripts/check_abi_names.py

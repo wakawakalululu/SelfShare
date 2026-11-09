@@ -139,7 +139,7 @@ Go 服务端完全兼容原 Python 服务端的 HTTP API：
 
 ## 服务端配置
 
-服务端**只认命令行参数**。唯一例外：内部会读 `SELFSHARE_SEAL_KEY`（配对码密封密钥，见 `internal/store/registry.go::sealKey`），其余 `SELFSHARE_*` 环境变量一律不读。**跨实现混跑（Python ↔ Go）时不要设置 `SELFSHARE_SEAL_KEY`**——Python 端不读它，两端解封密钥不一致会导致配对兑换跨实现失败（处置待定，见 `docs/decisions/OPEN-DECISIONS.md` O-4）：
+服务端**只认命令行参数**。唯一例外：内部会读 `SELFSHARE_SEAL_KEY`（配对码密封密钥，见 `internal/store/registry.go::sealKey`），其余 `SELFSHARE_*` 环境变量一律不读。**跨实现混跑（Python ↔ Go）时不要设置 `SELFSHARE_SEAL_KEY`**——Python 端不读它，两端解封密钥不一致会导致配对兑换跨实现失败（已裁决：2026-11-08 ADR-002 保持现状 + 文档警示，部署勿设置 `SELFSHARE_SEAL_KEY`；见 `docs/decisions/ADR-002-seal-key-env.md`，原 O-4 见 `docs/decisions/OPEN-DECISIONS.md`）：
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|

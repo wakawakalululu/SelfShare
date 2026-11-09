@@ -88,13 +88,14 @@ unner\Release  selfshare_desktop.exe      1.7 MB
 
 头文件：`core/include/selfshare_core.h`。所有返回值都是 UTF-8 JSON，必须由 `ss_free` 释放。导出包括：
 
-- 生命周期：`ss_init`、`ss_shutdown`、`ss_version`
-- 挂载：`ss_mount`、`ss_unmount`、`ss_mount_info`
+- 生命周期：`ss_init`、`ss_shutdown`、`ss_version`、`ss_free`
+- 配对 / 连接：`ss_pair`、`ss_probe`
+- 挂载：`ss_mount`、`ss_unmount`、`ss_mount_info`、`ss_find_mount`
 - 同步：`ss_sync`、`ss_plan`、`ss_progress`
 - watch：`ss_watch_start`、`ss_watch_stop`、`ss_watch_status`
 - 历史：`ss_history`、`ss_restore`、`ss_remote_stat`
 
-Rust 导出、C 头文件和 Dart lookup 三方名称是否一致，由只读检查脚本 `desktop/scripts/check_abi_names.py` 保证：本地可直接运行 `python desktop/scripts/check_abi_names.py`，`ci.yml` 的对应步骤在 CI 中执行该脚本；`build_windows.ps1` 构建流程本身不做该检查。
+C 头文件、Dart lookup、`tests/test_core_dll.py` 的 `ABI_SYMBOLS` 与 `ffi.rs` Rust 导出四方（header / dart / abi / rust）名称是否一致，由只读检查脚本 `desktop/scripts/check_abi_names.py` 保证：本地可直接运行 `python desktop/scripts/check_abi_names.py`，`ci.yml` 的对应步骤在 CI 中执行该脚本；`build_windows.ps1` 构建流程本身不做该检查。
 
 ## 多端策略
 
