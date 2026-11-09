@@ -277,7 +277,9 @@ func (v *Vault) Commit(ops []Op, origin string) (*CommitResult, error) {
 			if current == nil {
 				continue
 			}
-			if op.BaseHash != nil && *current != *op.BaseHash {
+			// C4-1: 与 put 分支统一使用 samePtr(current, op.BaseHash)；
+			// base 缺失时拒绝，防止无 base del 静默覆盖第三方新编辑（O-7）。
+			if !samePtr(current, op.BaseHash) {
 				res.Conflicts = append(res.Conflicts, CommitConflict{
 					Path: rel, Reason: "remote_changed", RemoteHash: current, RemoteRev: currentRev,
 				})

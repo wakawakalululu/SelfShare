@@ -162,7 +162,9 @@ class Vault:
                 if kind == "del":
                     if current is None:
                         continue  # already gone, nothing to do
-                    if base is not None and current != base:
+                    # C4-1: 与 put 分支统一为 base == current；base 缺失时也拒绝，
+                    # 防止畸形/旧客户端的无 base del 静默覆盖第三方新编辑（O-7）。
+                    if base != current:
                         conflicts.append(
                             {
                                 "path": rel,
