@@ -151,6 +151,157 @@ func TestHeadRevMonotonicAndVersionsAppendOnly(t *testing.T) {
 	}
 }
 
+// TestCommitDeleteVsEditConflicts 覆盖 AGENTS.md §6「删除与编辑相撞」两向。
+// 断言以 v2/server/internal/store/vault.go:276-317 的实读语义为准：本层只做
+// base_hash 乐观并发，冲突方记入 CommitResult.Conflicts(reason=remote_changed)
+// 并跳过，不生成「名字 (冲突副本-从 主机 时间).ext」副本（副本命名在
+// desktop/core/src/engine.rs:46,407）。因此服务端层面的「不丢数据」表现为：
+// 远端条目不被静默覆盖、head_rev 不回退、versions 不减少；A 改 / B 删保留
+// 编辑，A 删 / B 改可由编辑方 Force 重放复活。
+func TestCommitDeleteVsEditConflicts(t *testing.T) {
+	const path = "dir/clash.txt"
+
+	cases := []struct {
+		name        string
+		firstDel    bool // true: A 删 / B 改；false: A 改 / B 删
+		wantDeleted bool // 相撞后 files 表是否为 tombstone
+	}{
+		{"A deletes, B edits", true, true},
+		{"A edits, B deletes", false, false},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			v := tempVault(t)
+			base, err := v.PutBlobBytes([]byte("base-v1"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			edited, err := v.PutBlobBytes([]byte("edited-v2"))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// 双方共同基线：一次普通 put，head_rev=1、versions=1。
+			res0, err := v.Commit([]Op{putOp(path, base, nil)}, "host-setup")
+			if err != nil || len(res0.Applied) != 1 || res0.HeadRev != 1 {
+				t.Fatalf("baseline put: res=%+v err=%v", res0, err)
+			}
+
+			// 两方基于同一 base 同时动作。
+			var first, second Op
+			if tc.firstDel {
+				first = Op{Op: "del", Path: path, BaseHash: strPtr(base)}
+				second = putOp(path, edited, strPtr(base))
+			} else {
+				first = putOp(path, edited, strPtr(base))
+				second = Op{Op: "del", Path: path, BaseHash: strPtr(base)}
+			}
+
+			resA, err := v.Commit([]Op{first}, "hostA")
+			if err != nil || len(resA.Applied) != 1 || len(resA.Conflicts) != 0 ||
+				resA.HeadRev <= res0.HeadRev {
+				t.Fatalf("first party must apply: res=%+v err=%v", resA, err)
+			}
+			stA, err := v.Stat()
+			if err != nil {
+				t.Fatal(err)
+			}
+			hA, err := v.History(path, 10)
+			if err != nil || len(hA) != 2 {
+				t.Fatalf("history after first commit: %+v err=%v", hA, err)
+			}
+
+			// 相撞方：必须显式报冲突，不得静默覆盖，也不得 bump head_rev / 追加版本。
+			resB, err := v.Commit([]Op{second}, "hostB")
+			if err != nil || len(resB.Applied) != 0 || len(resB.Conflicts) != 1 {
+				t.Fatalf("clash must be reported, not overwritten: res=%+v err=%v", resB, err)
+			}
+			c := resB.Conflicts[0]
+			if c.Path != path || c.Reason != "remote_changed" || c.RemoteRev != resA.HeadRev {
+				t.Fatalf("unexpected conflict: %+v (first head_rev=%d)", c, resA.HeadRev)
+			}
+			if tc.firstDel {
+				// 已被删的路径：current 为 nil，remote_hash 必须为空。
+				if c.RemoteHash != nil {
+					t.Fatalf("deleted path must report nil remote_hash: %+v", c)
+				}
+			} else if c.RemoteHash == nil || *c.RemoteHash != edited {
+				t.Fatalf("edited path must report remote_hash=%s: %+v", edited, c)
+			}
+			if resB.HeadRev != resA.HeadRev || v.HeadRev() != resA.HeadRev {
+				t.Fatalf("head_rev must not move on a rejected op: %d -> %d", resA.HeadRev, resB.HeadRev)
+			}
+			stB, err := v.Stat()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if stB.HeadRev < stA.HeadRev || stB.Versions < stA.Versions {
+				t.Fatalf("head_rev/versions must never regress: %+v -> %+v", stA, stB)
+			}
+			if stB.HeadRev != stA.HeadRev || stB.Versions != stA.Versions {
+				t.Fatalf("rejected clash op must not bump rev/version: %+v -> %+v", stA, stB)
+			}
+			hB, err := v.History(path, 10)
+			if err != nil || len(hB) != len(hA) || hB[0].Rev != hA[0].Rev ||
+				hB[1].Hash == nil || *hB[1].Hash != base {
+				t.Fatalf("rejected op must not rewrite/append versions: %+v -> %+v err=%v", hA, hB, err)
+			}
+
+			// Manifest 只保留原路径这一条（store 层不生成冲突副本），且远端内容未被覆盖。
+			entries, manifestRev, err := v.Manifest(0)
+			if err != nil || manifestRev != v.HeadRev() || len(entries) != 1 ||
+				entries[0].Path != path {
+				t.Fatalf("manifest after clash: entries=%+v rev=%d err=%v", entries, manifestRev, err)
+			}
+			if entries[0].Deleted != tc.wantDeleted {
+				t.Fatalf("deleted flag after clash = %v, want %v: %+v", entries[0].Deleted, tc.wantDeleted, entries[0])
+			}
+			if tc.wantDeleted {
+				if entries[0].Hash != nil {
+					t.Fatalf("tombstone must not keep a hash: %+v", entries[0])
+				}
+			} else if entries[0].Hash == nil || *entries[0].Hash != edited {
+				t.Fatalf("edit must be kept, not overwritten by del: %+v", entries[0])
+			}
+
+			if !tc.firstDel {
+				return // A 改 / B 删：编辑已保留，删除被拒，无需复活。
+			}
+
+			// A 删 / B 改：B 的编辑内容仍在 blobstore（未丢数据），
+			// 编辑方以 Force 重放即可复活为新内容，且 head_rev 递增、versions 追加。
+			if !v.HasBlob(edited) {
+				t.Fatal("edited blob was lost on clash")
+			}
+			resF, err := v.Commit([]Op{{
+				Op: "put", Path: path, Hash: strPtr(edited), BaseHash: strPtr(base), Force: true,
+			}}, "hostB")
+			if err != nil || len(resF.Applied) != 1 || resF.Applied[0].Action != "put" ||
+				resF.HeadRev <= resB.HeadRev {
+				t.Fatalf("force replay must resurrect the edit: res=%+v err=%v", resF, err)
+			}
+			stF, err := v.Stat()
+			if err != nil || stF.HeadRev != resF.HeadRev || stF.Files != 1 ||
+				stF.Versions <= stB.Versions {
+				t.Fatalf("stat after force replay: %+v err=%v", stF, err)
+			}
+			hF, err := v.History(path, 10)
+			if err != nil || len(hF) != 3 || hF[0].Rev != resF.HeadRev ||
+				hF[0].Action != "put" || hF[0].Hash == nil || *hF[0].Hash != edited ||
+				hF[1].Action != "del" || hF[2].Action != "put" ||
+				hF[2].Hash == nil || *hF[2].Hash != base {
+				t.Fatalf("history must be append-only across del + resurrect: %+v err=%v", hF, err)
+			}
+			finalEntries, _, err := v.Manifest(0)
+			if err != nil || len(finalEntries) != 1 || finalEntries[0].Deleted ||
+				finalEntries[0].Hash == nil || *finalEntries[0].Hash != edited {
+				t.Fatalf("resurrected edit must win: %+v err=%v", finalEntries, err)
+			}
+		})
+	}
+}
+
 func TestCommitRejectsTraversal(t *testing.T) {
 	v := tempVault(t)
 	d, _ := v.PutBlobBytes([]byte("x"))
