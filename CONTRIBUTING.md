@@ -18,27 +18,36 @@ python tests/test_p2p.py
 python tests/test_pairing.py
 
 # 跨实现兼容（同一套 Python 用例打到真实 Go 二进制；路径用绝对路径）
-# bash / WSL / CI：
+# 先构建下面写死的 bin/selfshare-server：CI 产物是 $RUNNER_TEMP/selfshare-server 或 bin/selfshare-server-windows-amd64.exe，本地不会凭空存在
+(cd v2/server && go build -o bin/selfshare-server ./cmd/selfshare-server)  # Windows 改 -o bin/selfshare-server.exe
+# bash / WSL / CI：SELFSHARE_SERVER_BIN 必须指向上面刚构建的 bin/selfshare-server
 SELFSHARE_SERVER_BIN="$(pwd)/v2/server/bin/selfshare-server" python tests/test_sync.py -v
 SELFSHARE_SERVER_BIN="$(pwd)/v2/server/bin/selfshare-server" python tests/test_p2p.py -v
 
-# Rust
+# Rust（同 ci.yml rust job）
 cd desktop/core
 cargo build --release
-cargo test --release
+cargo test --release -- --nocapture
+cargo test --release --test integration -- --test-threads=1
 
 # Flutter（如改动 GUI）
 cd desktop/app
 flutter analyze
 flutter build windows --release
 
-# v2（Go 服务端 + Tauri 客户端）
+# v2（Go 服务端 + Tauri 客户端；同 ci-v2.yml server-test / ci.yml v2-client）
 cd v2/server
-go test ./... && go vet ./...
+go test -race ./...
+go vet ./...
 cd ../client && npm ci && npm run build
-cd src-tauri && cargo build && cargo test --test engine_state
+cd src-tauri && cargo build && cargo test --test engine_state -- --nocapture
 
 # HTTPS 自签 + GET /api/pair 冒烟（bash/WSL；复现 ci-v2.yml `compat` 同名步骤）
+set -euo pipefail
+d=""
+pid=""
+cleanup() { status=$?; set +e; if [ -n "$pid" ]; then kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; fi; if [ -n "$d" ]; then rm -rf "$d"; fi; exit "$status"; }
+trap cleanup EXIT
 d="$(mktemp -d)"
 (cd v2/server && go build -o "$d/selfshare-server" ./cmd/selfshare-server)
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=localhost" \
@@ -46,23 +55,30 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=localhost" \
 "$d/selfshare-server" --root "$d/data" --host 127.0.0.1 --port 18585 \
   --cert "$d/cert.pem" --key "$d/key.pem" --quiet > "$d/server.log" 2>&1 &
 pid=$!
-trap 'kill "$pid" 2>/dev/null; rm -rf "$d"' EXIT
+ready=""
 for i in $(seq 1 30); do
-  curl -kfsS --max-time 2 https://127.0.0.1:18585/api/ping -o "$d/ping.json" 2>>"$d/probe.log" \
-    && curl -kfsS --max-time 2 https://127.0.0.1:18585/api/pair -o "$d/pair.json" 2>>"$d/probe.log" && break
+  kill -0 "$pid" 2>/dev/null || { cat "$d/server.log"; exit 1; }
+  if curl -kfsS --max-time 2 https://127.0.0.1:18585/api/ping -o "$d/ping.json" 2>>"$d/probe.log" \
+     && curl -kfsS --max-time 2 https://127.0.0.1:18585/api/pair -o "$d/pair.json" 2>>"$d/probe.log"; then ready=1; break; fi
   sleep 0.5
 done
-grep -q '"version":"1.0"' "$d/pair.json" && grep -q '"pairing":true' "$d/pair.json"
+[ -n "$ready" ] || { echo "HTTPS /api/ping + /api/pair never ready"; cat "$d/server.log" "$d/probe.log"; exit 1; }
+grep -q '"engine":"go"' "$d/ping.json"
+grep -q '"version":"1.0"' "$d/ping.json"
+grep -q '"version":"1.0"' "$d/pair.json"
+grep -q '"pairing":true' "$d/pair.json"
 
 # tag 存在性断言（复现 release.yml `publish` 的 Assert requested tag exists；与 dispatch "Existing tag" 输入一致）
 TAG="v2.0.0"
 test "$(git tag -l "$TAG")" = "$TAG" && git rev-parse --verify --quiet "refs/tags/$TAG"
 
-# 并发上传基准（回到仓库根后执行，需先构建 Go 二进制）
+# 并发上传基准（回到仓库根后执行；先按上文 go build 生成 bin/selfshare-server.exe）
 cd ../../..
 python v2/scripts/bench_upload.py --server v2/server/bin/selfshare-server.exe
 python v2/scripts/bench_ab.py --server-a v2/server/bin/selfshare-server.exe --build-baseline --repeats 3
 ```
+
+> 上述 go / cargo 命令与 ci.yml / ci-v2.yml 一致，但本机缺 go/cargo 工具链，未实跑（勿写作已验证）；python 层命令可本地实跑。
 
 ## 远程构建 ↔ 本地验证循环
 
