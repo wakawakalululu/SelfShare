@@ -401,6 +401,146 @@ fn ffi_pair_failure_resets_progress() {
 }
 
 // --------------------------------------------------------------------------- //
+// 删除与编辑相撞（AGENTS.md §6 四类必测之一）：两向端到端断言
+// --------------------------------------------------------------------------- //
+
+/// 「删除撞编辑」方向一：A 删除、B 编辑，最终保留 B 的编辑（不丢数据）。
+/// 语义基线：sync.py 三方合并表第 16 行 / engine.rs::plan_with
+/// 「本地已删但远端有改动 → 保留远端」。该分支是 Pull 而非 Conflict，
+/// 故不产生冲突副本；keep-both 仅用于「双方都改」，已由
+/// rust_detects_conflict_and_keeps_both 覆盖。
+#[test]
+fn rust_delete_vs_edit_remote_wins() {
+    let Some(server) = start_server() else { return };
+    let a = tmp_dir("rs-dea");
+    let b = tmp_dir("rs-deb");
+    let _ = fs::remove_dir_all(&a);
+    let _ = fs::remove_dir_all(&b);
+
+    // 共同基线：A 上传、B 拉取，两端各建立 base 快照。
+    write(&a, "shared.txt", "base");
+    let mut revs = vec![sync(&server, &a).head_rev];
+    revs.push(sync(&server, &b).head_rev);
+    assert_eq!(read(&b, "shared.txt"), "base");
+
+    // 离线并发：A 删除、B 编辑。内容长度刻意不同，避免 (size, mtime) 复用误判。
+    fs::remove_file(a.join("shared.txt")).unwrap();
+    write(&b, "shared.txt", "B 编辑版本");
+
+    // B 先把编辑推到服务端。
+    let rb = sync(&server, &b);
+    revs.push(rb.head_rev);
+    assert!(rb.pushes.contains(&"shared.txt".to_string()), "{}", rb.summary());
+    assert!(rb.errors.is_empty(), "{:?}", rb.errors);
+
+    // A 同步：本地已删 + 远端有改动 → Pull，被删文件复活为 B 的编辑版本。
+    let ra = sync(&server, &a);
+    revs.push(ra.head_rev);
+    assert!(ra.pulls.contains(&"shared.txt".to_string()), "{}", ra.summary());
+    assert!(ra.conflicts.is_empty(), "删除撞编辑不应判为双方都改：{}", ra.summary());
+    assert!(ra.errors.is_empty(), "{:?}", ra.errors);
+    assert_eq!(read(&a, "shared.txt"), "B 编辑版本", "B 的编辑不得丢失");
+
+    // 再各同步一次收敛，两端应完全一致。
+    revs.push(sync(&server, &b).head_rev);
+    revs.push(sync(&server, &a).head_rev);
+    assert_eq!(read(&a, "shared.txt"), read(&b, "shared.txt"));
+
+    // 服务端 head_rev 全局单调递增，不得回退；且本用例确有提交。
+    assert!(revs.windows(2).all(|w| w[1] >= w[0]), "head_rev 必须单调不减：{:?}", revs);
+    assert!(*revs.last().unwrap() > revs[0], "本用例应当发生提交：{:?}", revs);
+
+    // 冲突副本命名契约：删除撞编辑保留编辑 ≠ 保留双方，不生成副本；
+    // 命名常量仍须是「冲突副本」，与 rust_detects_conflict_and_keeps_both 一致。
+    assert_eq!(selfshare_core::engine::CONFLICT_TAG, "冲突副本");
+    let no_copy = |d: &Path| {
+        let names: Vec<String> = fs::read_dir(d)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect();
+        assert!(
+            !names.iter().any(|n| n.contains(selfshare_core::engine::CONFLICT_TAG)),
+            "删除撞编辑不应产生冲突副本：{:?}",
+            names
+        );
+    };
+    no_copy(&a);
+    no_copy(&b);
+
+    let _ = fs::remove_dir_all(&a);
+    let _ = fs::remove_dir_all(&b);
+}
+
+/// 「删除撞编辑」方向二：A 编辑、B 删除，最终保留 A 的编辑
+/// （force 复活墓碑，不丢数据）。语义基线：sync.py 第 18 行 /
+/// engine.rs::plan_with「本地有改动但远端已删 → 保留本地」；
+/// 对应 store.py::commit 的 force + current is None 分支，
+/// 与 Go 侧 tombstone + force resurrect 对齐。
+#[test]
+fn rust_edit_vs_delete_local_wins() {
+    let Some(server) = start_server() else { return };
+    let a = tmp_dir("rs-eda");
+    let b = tmp_dir("rs-edb");
+    let _ = fs::remove_dir_all(&a);
+    let _ = fs::remove_dir_all(&b);
+
+    write(&a, "shared.txt", "base");
+    let mut revs = vec![sync(&server, &a).head_rev];
+    revs.push(sync(&server, &b).head_rev);
+    assert_eq!(read(&b, "shared.txt"), "base");
+
+    // 离线并发：A 编辑、B 删除。
+    write(&a, "shared.txt", "A 编辑版本");
+    fs::remove_file(b.join("shared.txt")).unwrap();
+
+    // B 先把删除推到服务端（写墓碑、head_rev 递增）。
+    let rb = sync(&server, &b);
+    revs.push(rb.head_rev);
+    assert!(rb.deletes_remote.contains(&"shared.txt".to_string()), "{}", rb.summary());
+    assert!(rb.errors.is_empty(), "{:?}", rb.errors);
+
+    // A 同步：本地有改动 + 远端已删 → Push(force) 复活；
+    // 若 force 被服务端拒绝，错误会落进 report.errors，此断言即暴露问题。
+    let ra = sync(&server, &a);
+    revs.push(ra.head_rev);
+    assert!(ra.pushes.contains(&"shared.txt".to_string()), "{}", ra.summary());
+    assert!(ra.conflicts.is_empty(), "删除撞编辑不应判为双方都改：{}", ra.summary());
+    assert!(ra.errors.is_empty(), "force 复活不应被判提交冲突：{:?}", ra.errors);
+    assert_eq!(read(&a, "shared.txt"), "A 编辑版本", "A 的编辑不得丢失");
+
+    // B 收敛：之前删掉的文件以 A 的编辑版本复活（远端新增 → Pull）。
+    let rb2 = sync(&server, &b);
+    revs.push(rb2.head_rev);
+    assert!(rb2.errors.is_empty(), "{:?}", rb2.errors);
+    assert_eq!(read(&b, "shared.txt"), "A 编辑版本", "B 端应拉回被保留的编辑");
+    revs.push(sync(&server, &a).head_rev);
+    assert_eq!(read(&a, "shared.txt"), read(&b, "shared.txt"));
+
+    assert!(revs.windows(2).all(|w| w[1] >= w[0]), "head_rev 必须单调不减：{:?}", revs);
+    assert!(*revs.last().unwrap() > revs[0], "本用例应当发生提交：{:?}", revs);
+
+    assert_eq!(selfshare_core::engine::CONFLICT_TAG, "冲突副本");
+    let no_copy = |d: &Path| {
+        let names: Vec<String> = fs::read_dir(d)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect();
+        assert!(
+            !names.iter().any(|n| n.contains(selfshare_core::engine::CONFLICT_TAG)),
+            "删除撞编辑不应产生冲突副本：{:?}",
+            names
+        );
+    };
+    no_copy(&a);
+    no_copy(&b);
+
+    let _ = fs::remove_dir_all(&a);
+    let _ = fs::remove_dir_all(&b);
+}
+
+// --------------------------------------------------------------------------- //
 // P2P：Rust 节点 <-> Python 服务端 / Rust 客户端互通
 // --------------------------------------------------------------------------- //
 
