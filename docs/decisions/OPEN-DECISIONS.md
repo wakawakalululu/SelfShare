@@ -55,3 +55,34 @@
   「顺手统一」，旧产物冒烟套件与已发布 GUI 将同时失效且难以归因。
 - 验证状态：本条为**静态影响面分析，未实跑任何测试 / 构建**；契约落盘后由
   `AGENTS.md` §6 的既有 job 守护形状回归。
+
+## O-6 · 三端 `norm_rel` trim 与 Windows 盘符 containment 是否统一（**v2 变更记录**）
+
+- 背景（2026-11-09 `selfshare-dev-team` D 轨道只读核实）：Python `selfshare/util.py:44`
+  与 Go `v2/server/internal/store/util.go:16` 在反斜杠替换后对整串做首尾 trim，
+  Rust `desktop/core/src/util.rs:15` 不 trim；同一含首尾空白文件名可在 manifest /
+  base 出现 `" a.txt"` 与 `"a.txt"` 两键，经 `sync.py:322` / `engine.rs:160-164`
+  键并集触发 Pull/Push 交替。Windows 盘符：Python `util.py:73` 显式拒绝，Rust
+  `util.rs:38` 靠 containment 兜底（测试为容错断言），Go `util.go:43-46` 无
+  `filepath.VolumeName` 且 `vault_test.go:359-360` 已固化「`C:` 为普通段」；
+  POSIX 三端均视其为普通相对路径。Go `AbsPath` 生产**零调用**，服务端只按 rel 存键。
+- 影响说明：改动任一端的 rel 归一或盘符处理都会改变 `files.rel` / `versions.rel`
+  键空间（C3、`vault.go:20/31`）；统一不 trim 会改已发布 Python/Go 服务端行为并
+  违反「新库能被老客户端读」；统一 trim 需重编译 Rust DLL，已发布便携包内 DLL
+  仍是旧语义（混跑以服务端 trim 为准）；三端统一接受盘符会撤销 ADR-001 加固。
+  `ServiceVersion` 保持 `"1.0"`，blob 布局 / C4 八情形 / C5 ABI·IPC 形状均不受影响。
+- 选项：1) **trim 收敛**：只给 Rust 补 trim，对齐已发布 Python/Go 服务端（历史库键
+  不变，可平滑）；2) **盘符冻结**：按 OS 分支把现状升格为契约，未来统一另立 v2 变更；
+  3) 统一不 trim / 三端统一接受盘符（**不可兼容，否决**）。
+- 建议与裁决（2026-11-09 D 轨道 G0/G1）：**选 1 + 2**。本轮落盘
+  `docs/contracts/storage-layout.md`（C3）与本契约 §4 C6-2；实施限于 Rust
+  `norm_rel` / base 键与三端测试断言，**不改 Python / Go 生产代码**；D2 盘符语义
+  冻结，禁止顺手改 `NormRel` 或服务端存键面。限制披露（首尾空白文件名不受支持、
+  已发布 DLL 旧语义）写入 C3 §4。
+- 待拍板：协议架构师 + 同步内核工程师 + 客户端工程师（Dart/DLL）+ 发布运维
+  —— 仅针对「未来是否立项 D2 统一」；本轮 trim 收敛已按契约先行实施。
+  不拍板的后果：有人「顺手统一盘符或 trim 方向」将静默改写 `vault.db` 键空间，
+  老客户端与已发布便携包 DLL 混跑分叉且难以归因。
+- 验证状态：影响面为**静态只读盘点，未实跑任何测试 / 构建**；本轮实现改动后由
+  L1 / L4（`SELFSHARE_SERVER_BIN` 兼容套件）与 push 后 `ci.yml rust` /
+  `ci-v2.yml server-test` 实证，结果见 `LOOP-20261109-05` 验证卡。

@@ -72,3 +72,15 @@ C6 不豁免：新增的拒绝面必须固化进安全契约，否则三端口�
 | NSIS 真实安装 + GUI 窗口冒烟 | 需隔离环境 | 暂缓，不得改本机环境 |
 
 **本团 G0 判定**：触及 C ABI / 返回形状 / Dart bridge 的改动一律停在本团 G0，移交 D 轨道；本团只保留 CI / 产物 / 验证 / 分析四段。**收盘（2026-11-08）**：D 轨道 G0/G1 已完成契约先行（C5 落盘 + O-5 登记），本团非契约项已全部由 CI 实证；删除撞编辑两向断言已由 Rust 集成 + Go store 双层实跑闭合（run `42556170295` / `42556170181`）；下一轮仅剩 `ss_find_mount` 补绑定、NSIS 隔离环境冒烟。
+
+## 9. D 轨道契约先行闭环（2026-11-09，`LOOP-20261109-05`）
+
+用户启用 `selfshare-dev-team` 后，此前多轮移交的 D 轨道路径语义项按「影响面 → 契约对齐 → 三端测试 → 兼容套件」推进：
+
+| 项 | 裁决 | 落盘 |
+| --- | --- | --- |
+| D1 三端 `norm_rel` trim 不一致（Rust 不 trim） | **实施收敛**：只给 Rust 补 trim，对齐已发布 Python/Go 服务端 | `docs/contracts/storage-layout.md` C3-1、`docs/decisions/OPEN-DECISIONS.md` O-6 |
+| D2 Windows 盘符 containment 差异 | **冻结现状**（Go `AbsPath` 生产零调用、Python 已加固、POSIX 三端一致），按 OS 分支升格为契约 | `docs/contracts/security-contract.md` C6-2、O-6 |
+| D6 删除 TOCTOU / D7 IPC 吞错误 / O-5 C ABI 形状 | 维持排除（分别属 C4 八情形 / C5 IPC / 已冻结的不可兼容变更） | O-5、O-6 |
+
+限制披露（首尾空白文件名不受支持、已发布便携包 DLL 仍是旧语义）见 C3 §4。验证以 `LOOP-20261109-05` 的 G3 卡为准。

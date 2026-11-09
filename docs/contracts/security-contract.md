@@ -33,9 +33,15 @@
 ## 4. 路径与摘要校验
 
 - 相对路径统一经 `norm_rel`，拒绝 `..`；三端（Python `selfshare/util.py`、
-  Rust `desktop/core/src/util.rs`、Go `store.AbsPath`）语义对齐。
-- Python 客户端 `abs_path` 额外拒绝绝对路径与盘符段（`C:/x`、`C:rel`），拼接后
-  `commonpath` 复核（ADR-001）；服务端只按 `rel` 存键不拼本地路径（O-1 维持）。
+  Rust `desktop/core/src/util.rs`、Go `store.NormRel`）语义对齐，rel 键规范化细则
+  见 `docs/contracts/storage-layout.md` C3-1（含三端首尾空白 trim）。
+- **containment 按宿主 OS 分支（C6-2，2026-11-09 D 轨道冻结）**：Windows 下
+  Python `abs_path`（`util.py:73`）显式拒绝绝对路径 / 盘符段（`C:/x`、`C:rel`）并
+  `commonpath` 复核（ADR-001）；Rust `abs_path`（`util.rs:38`）靠 `starts_with(root)`
+  兜底；Go `AbsPath`（`util.go:43-46`）只做 `Clean` 前缀包含且**生产零调用**
+  （仅测试使用）。POSIX 下三端都把 `C:/...` 当普通相对段，红线是不逃出 root。
+  服务端只按 `rel` 存键、不拼本地路径（O-1 维持），故 Go 差异不构成越权；
+  O-6 已登记「未来统一属 v2 变更」，禁止顺手在 `NormRel` / `norm_rel` 层收紧。
 - blob 摘要严格 `^[0-9a-f]{64}$`；blob 落盘 `blobs/aa/<sha256>`，先校验后落盘。
 
 ## 5. 原子写与落盘权限
