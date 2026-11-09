@@ -96,3 +96,26 @@
   `ci-v2.yml server-test` 实证，结果见 `LOOP-20261109-05` 验证卡。
 
 **2026-11-09 全授权复核**：授权已收到，但按四红线与本条原结论**维持冻结**——本轮只做存量库只读扫描与契约记录，不改 Python / Go / Rust 实现。理由：统一任一端 rel 归一或盘符处理会改写 `files.rel` / `versions.rel` 键空间（C3），属**不可兼容 v2 变更**；已发布 `v2.0.0` / 演练 `v1.1.0` 便携包 DLL 仍是旧 trim 语义（**已发布产物分叉**），三端统一接受盘符会撤销 ADR-001 加固，老客户端与新 DLL / 包内 DLL 混跑必挂。未来立项前置条件：先完成**存量库只读扫描**（首尾空白 / 盘符 rel；本机 `*.db` 数量 0，须在部署环境执行）、标**大版本**、三端实现与固化断言同步改、新登记 v2 变更记录，并实跑 **L3（Go 23 例 + `go test -race`）+ L4（`SELFSHARE_SERVER_BIN` 兼容套件）**；`ServiceVersion` 保持 `1.0`。本段为追加记录，**不改写 O-6 原结论（选 1 + 2）**。
+
+## O-7 · `del` 缺 `base_hash` 时跳过乐观并发（**已发布行为变更，2026-11-09 修复**）
+
+- 背景：`selfshare/store.py:162-183` 与 `v2/server/internal/store/vault.go:276-300` 原先只在
+  `base is not None and current != base` 时判冲突；`base_hash` 缺失的 `del` 直接 bump +
+  置 `deleted=1` + 追加 del 版本。manifest→commit 窗口内第三方 `put` 的新编辑会被从同步
+  路径抹掉（blob 仍在、仅 history 可恢复）→ 违反「不丢数据」红线与 C4「删除撞编辑保留编辑」。
+  经实读核实：`plan_with` 只在 `base` 有该 rel 且 `remote == base` 时产生 `delete_remote`
+  （`sync.py:350-354`），正常客户端**恒带非空 `base_hash`**，故这是畸形/旧版/第三方调用方
+  触发的**纵深防御缺口**，不是当前正常流程的已复现丢数据；定级由上一轮 P0 挂账收窄为
+  「P0 防御性收敛」。
+- 影响说明：修正为 C4-1「`put`/`del` 统一 `base == current`」后，正常删除不受影响
+  （`test_delete_propagates` / `test_delete_vs_edit_keeps_edit` 保持通过）；只有无 base `del`
+  由「静默删除」变为 `remote_changed` 冲突。Python 客户端 `sync.py:541-546` 记 errors +
+  `state.forget`，下一轮走 `pull` 保留远端，**不死循环**。`ServiceVersion = "1.0"`、
+  `/api/commit` 请求/响应形状、blob 布局、C2/C3/C5/C6 条款均不变。
+- 裁决：**实施 C4-1**（2026-11-09 `LOOP-20261109-07`）。契约先行落盘
+  `docs/contracts/merge-semantics.md`；Python / Go 两端各收敛一行判据；三端注入用例 + L4
+  用**新编译** Go 二进制实跑。上一轮任务卡推荐的客户端 ②（恒带 base、缺失降级 Pull）
+  经实读判定为冗余，本轮不做，避免改规划逻辑引入回归。
+- 待拍板：无需（属红线内纵深防御）；若未来要兼容无 base 的旧客户端删除，须另立
+  v2 变更并给出明确的 base 回填方案。
+- 验证状态：契约影响面为静态实读；实现后的实证结果见 `LOOP-20261109-07` 验证卡。
