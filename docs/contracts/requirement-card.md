@@ -67,8 +67,8 @@ C6 不豁免：新增的拒绝面必须固化进安全契约，否则三端口�
 | Dart bridge 补 `ss_find_mount` 绑定（头文件与 `ffi.rs` 已有，bridge 仅 18 个 lookup） | C5 ABI 下游 | 可平滑，另立单元待排期（`abi-ipc.md` C5-6） |
 | `ss_pair` 首次同步失败不复位 `PROGRESS` | `ffi.rs` 返回内容 | **已闭合**：`b8b0895` 仅复位内部 `PROGRESS`，返回形状不变；本团 G0 放行 |
 | Tauri `save_settings` 改用 `util::atomic_write`；`persist()` 错误传播 | 不改 IPC 签名 / 布局，属 §5.3 合规修复 | **已闭合**：`c37501d`；`ci.yml` `v2-client` 实证 `engine_state` 6 passed（run `42474993786`） |
-| Rust/Go 集成测试补齐（containment、`head_rev` 单调、删除撞编辑两向） | 纯测试 | **已闭合（部分）**：`6b611c9` 补 containment / `head_rev` / `versions`；删除撞编辑两向独立断言仍待补 |
+| Rust/Go 集成测试补齐（containment、`head_rev` 单调、删除撞编辑两向） | 纯测试 | **已闭合**：`6b611c9` 补 containment / `head_rev` / `versions`；删除撞编辑两向独立断言由 Rust 集成 + Go store 双层实跑闭合（run `42556170295` / `42556170181`） |
 | HTTPS 自签 + `/api/pair` 冒烟补 CI；`release.yml` dispatch 加 tag 存在性断言 | CI / 发布编排 | **已闭合**：`5f38c06`；HTTPS 冒烟由 `42474993754` 实证，tag 断言由 `42475819429` 负向演练实证 |
 | NSIS 真实安装 + GUI 窗口冒烟 | 需隔离环境 | 暂缓，不得改本机环境 |
 
-**本团 G0 判定**：触及 C ABI / 返回形状 / Dart bridge 的改动一律停在本团 G0，移交 D 轨道；本团只保留 CI / 产物 / 验证 / 分析四段。**收盘（2026-11-08）**：D 轨道 G0/G1 已完成契约先行（C5 落盘 + O-5 登记），本团非契约项已全部由 CI 实证；下一轮仅剩 `ss_find_mount` 补绑定、删除撞编辑两向断言、NSIS 隔离环境冒烟。
+**本团 G0 判定**：触及 C ABI / 返回形状 / Dart bridge 的改动一律停在本团 G0，移交 D 轨道；本团只保留 CI / 产物 / 验证 / 分析四段。**收盘（2026-11-08）**：D 轨道 G0/G1 已完成契约先行（C5 落盘 + O-5 登记），本团非契约项已全部由 CI 实证；删除撞编辑两向断言已由 Rust 集成 + Go store 双层实跑闭合（run `42556170295` / `42556170181`）；下一轮仅剩 `ss_find_mount` 补绑定、NSIS 隔离环境冒烟。

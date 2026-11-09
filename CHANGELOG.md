@@ -23,7 +23,7 @@
 - `release.yml` 演练（`workflow_dispatch` / `v1.1.0`）真实产出并发布 8 个资产；发布前资产集合与非空校验、便携包内含 `selfshare_core.dll`、Go 二进制 `--version` 均由流水线实证（run `42424638532`）。本地下载 8 资产按 API `digest` 校验，便携包解压即用 + 包内 DLL 6 例冒烟、L1 31 例、L4 26 例通过。演练 Release 按用户决定保留，`get_latest_release` 暂为 `v1.1.0`，稳定版仍为 `v2.0.0`。
 - 新增三方名称一致性只读检查 `desktop/scripts/check_abi_names.py`：比对 `selfshare_core.h` 的 19 个 `ss_*` 声明、`rust_bridge.dart` 的 `lookupFunction` 名称与 `tests/test_core_dll.py` 的 `ABI_SYMBOLS`，不一致时打印差异并以非 0 退出；`ci.yml` 在 `core-dll-smoke` job 补步骤于 CI 中执行该脚本（本地可直接运行 `python desktop/scripts/check_abi_names.py`）。`tests/test_core_dll.py` 同步新增 1 例，用 ctypes 调 `ss_find_mount` 传入确定不存在的路径，断言「无匹配」返回 `{"ok":false,"error":"不在任何同步目录内"}`（与 `rust_bridge.dart` 的 `_findMountNoMatchError` 白名单逐字一致），DLL 冒烟由 6 例增至 7 例。
 
-测试口径：Python 31 例（sync 20 / p2p 6 / pairing 5）+ 可选 DLL 冒烟 7 例、Rust 内核 18 例、Go 20 例、Tauri `engine_state` 测试。
+测试口径：Python 31 例（sync 20 / p2p 6 / pairing 5）+ 可选 DLL 冒烟 7 例、Rust 内核 23 例（历史 18 例）、Go 22 例（历史 20 例）、Tauri `engine_state` 测试。
 
 ---
 

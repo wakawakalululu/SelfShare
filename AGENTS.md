@@ -90,7 +90,7 @@ Windows runner 上跑 CLI 冒烟需 `PYTHONUTF8=1` / `PYTHONIOENCODING=utf-8`（
 两处实测易踩坑（2026-11-07 多代理评审核实）：
 
 - `make build` 产出 `bin/selfshare-server`（**无扩展名**）；Windows 本地的 `.exe` 由 `make build-windows` 或 `v2/scripts/build.sh server-windows` 产出，别把它当 `make build` 的默认产物。
-- `v2/server/internal/store/registry.go:256` 实际会读 `SELFSHARE_SEAL_KEY`，Python 端不读；部署文档曾写「不读 `SELFSHARE_*`」，2026-11-08 已改为「唯一例外 `SELFSHARE_SEAL_KEY`」并加混跑警示（`v2/README.md`、`v2/server/Dockerfile`、`docker-compose.yml`）。显式设置该变量会让两端 `token_sealed` 解封密钥不同、配对兑换跨实现失败。**处置待拍板（`docs/decisions/OPEN-DECISIONS.md` O-4），拍板前不要在部署里设置它。**
+- `v2/server/internal/store/registry.go:256` 实际会读 `SELFSHARE_SEAL_KEY`，Python 端不读；部署文档曾写「不读 `SELFSHARE_*`」，2026-11-08 已改为「唯一例外 `SELFSHARE_SEAL_KEY`」并加混跑警示（`v2/README.md`、`v2/server/Dockerfile`、`docker-compose.yml`）。显式设置该变量会让两端 `token_sealed` 解封密钥不同、配对兑换跨实现失败。**已裁决（2026-11-08 ADR-002：保持现状 + 文档警示，部署勿设置 `SELFSHARE_SEAL_KEY`；见 `docs/decisions/ADR-002-seal-key-env.md`，原 O-4 见 `docs/decisions/OPEN-DECISIONS.md`）。**
 
 ## 5. 代码与协议红线（违反即打回）
 
@@ -110,8 +110,8 @@ Windows runner 上跑 CLI 冒烟需 `PYTHONUTF8=1` / `PYTHONIOENCODING=utf-8`（
 | 层 | 内容 | 对应 CI |
 | --- | --- | --- |
 | L1 | Python 31 例（sync 20 / p2p 6 / pairing 5）+ 可选 DLL 冒烟 7 例（`test_core_dll.py`，`SELFSHARE_CORE_DLL` 门控） | `ci.yml` `python`；DLL 冒烟由 `core-dll-smoke` job 覆盖（已实跑）；三方名称一致性检查脚本 `desktop/scripts/check_abi_names.py` 由 `ci.yml` 对应步骤在 CI 中执行（口径见 `docs/contracts/abi-ipc.md` C5-1/C5-6） |
-| L2 | Rust 内核 18 例 + 集成测试 | `ci.yml` `rust` |
-| L3 | Go 20 例 + `go vet` + `go test -race` | `ci-v2.yml` `server-test` |
+| L2 | Rust 内核 23 例 + 集成测试（历史 18 例） | `ci.yml` `rust` |
+| L3 | Go 22 例 + `go vet` + `go test -race`（历史 20 例） | `ci-v2.yml` `server-test` |
 | L4 | 跨实现：Python 兼容套件对接真实 Go 二进制 | `ci-v2.yml` `compat` |
 | L5 | 前端 `npm run build` + Tauri `cargo check --all-targets`；`engine_state` 集成测试 | `ci-v2.yml` `client`（前端构建 + Tauri 打包）；`ci.yml` `v2-client`（cargo check + `engine_state`，已实跑） |
 | L6 | Flutter `analyze` + Windows 构建 | `ci.yml` `gui` |
@@ -119,7 +119,7 @@ Windows runner 上跑 CLI 冒烟需 `PYTHONUTF8=1` / `PYTHONIOENCODING=utf-8`（
 
 没跑过的层要写明原因（如无 Docker 引擎、无 gcc/cgo、无 Flutter SDK），不得用「应该没问题」代替。
 
-**当前验证缺口（静态盘点，不是已承诺能力）**：HTTPS 自签与 `GET /api/pair` 冒烟已由 `ci-v2.yml` `compat` job 覆盖（run `42474993754` 实证）；DLL 冒烟 7 例（`core-dll-smoke`）与 `engine_state` 由流水线覆盖（run `42415759818` 全绿，2026-11-07 时为 6 例，本轮增至 7 例）。四类必测中「peer 不可达回退」已补独立断言（`tests/test_p2p.py::PeerFallbackTestCase`），「删除与编辑相撞」两向已由 Rust 集成与 Go store 双层断言覆盖。涉及未覆盖场景时必须补用例并说明验证方式，不得写成「已由 CI 覆盖」。
+**验证覆盖现状（静态盘点，不是已承诺能力）**：HTTPS 自签与 `GET /api/pair` 冒烟已由 `ci-v2.yml` `compat` job 覆盖（run `42474993754` 实证）；`engine_state` 为 6 例（run `42415759818` 全绿）；DLL 冒烟 `core-dll-smoke` 早期 6 例（run `42415759818`），新增 `ss_find_mount` 一例后为 7 例，run `42558376176` 实证 `Ran 7 tests`——此「6→7」仅指 DLL 冒烟，与 `engine_state` 6 例无关。四类必测中「peer 不可达回退」已补独立断言（`tests/test_p2p.py::PeerFallbackTestCase`），「删除与编辑相撞」两向已由 Rust 集成与 Go store 双层断言覆盖。涉及未覆盖场景时必须补用例并说明验证方式，不得写成「已由 CI 覆盖」。
 
 ## 7. 交付物归档映射（专家团按此落盘，不另建体系）
 

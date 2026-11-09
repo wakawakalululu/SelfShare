@@ -67,8 +67,9 @@ desktop\app\build\windows\x64\runner\Release\
 
 | 分组 | 函数 |
 | --- | --- |
-| 生命周期 | `ss_init` `ss_shutdown` `ss_version` |
-| 挂载 | `ss_mount` `ss_unmount` `ss_mount_info` |
+| 生命周期 | `ss_init` `ss_shutdown` `ss_version` `ss_free` |
+| 配对 / 连接 | `ss_pair` `ss_probe` |
+| 挂载 | `ss_mount` `ss_unmount` `ss_mount_info` `ss_find_mount` |
 | 同步 | `ss_sync` `ss_plan` `ss_progress` |
 | watch | `ss_watch_start` `ss_watch_stop` `ss_watch_status` |
 | 历史 | `ss_history` `ss_restore` `ss_remote_stat` |

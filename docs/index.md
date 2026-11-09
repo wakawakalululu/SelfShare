@@ -5,7 +5,7 @@
 纯 Python 标准库实现，**零第三方依赖**。Windows / Linux / macOS 通用，另有 Rust 内核与 Flutter 桌面 GUI。
 
 [![CI](https://github.com/wakawakalululu/SelfShare/actions/workflows/ci.yml/badge.svg)](https://github.com/wakawakalululu/SelfShare/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/wakawakalululu/SelfShare)](https://github.com/wakawakalululu/SelfShare/releases)
+[![Release v2.0.0](https://img.shields.io/badge/Release-v2.0.0-blue)](https://github.com/wakawakalululu/SelfShare/releases/tag/v2.0.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/wakawakalululu/SelfShare/blob/master/LICENSE)
 
 ## 为什么
@@ -59,7 +59,8 @@ python selfshare.py watch D:\同步盘 --p2p
 
 ## 下载
 
-- [最新 Release](https://github.com/wakawakalululu/SelfShare/releases)：Windows 便携包、服务端压缩包
+- [稳定版 v2.0.0](https://github.com/wakawakalululu/SelfShare/releases/tag/v2.0.0)：Windows 便携包、服务端压缩包
+- latest 当前为演练发布 `v1.1.0`（8 资产），按用户决定保留；稳定版请指定 `v2.0.0`（7 资产）
 - 源码：`git clone https://github.com/wakawakalululu/SelfShare.git`
 
 ## 限制

@@ -72,7 +72,7 @@ Windows 与 WSL Linux 二进制启动、`/api/ping`、`--version`、HTTPS 均通
 | 工程化 | CI（Python / Rust / Flutter 三个 job）、Release 打包、GitHub Pages 文档站、systemd 与 Windows 计划任务模板 | `.github/workflows/`、`deploy/`、`docs/` |
 | 测试 | Python 29 个测试方法（sync 19 / p2p 5 / pairing 5）、Rust 内核 18 个 `#[test]` | `tests/`、`desktop/core/` |
 
-### 2.2 v2：本地收敛版完成，**尚未入库、未经流水线复验**
+### 2.2 v2：本地收敛版完成（2026-11-04 历史快照，现已闭环；当时尚未入库、未经流水线复验）
 
 | 模块 | 已完成 | 主要证据 |
 | --- | --- | --- |
@@ -81,7 +81,7 @@ Windows 与 WSL Linux 二进制启动、`/api/ping`、`--version`、HTTPS 均通
 | 兼容性 | 与 Python 服务端 HTTP API 及磁盘数据布局一致；`ServiceVersion` 保持 `1.0` 兼容老客户端；本地端到端手测双向同步 + 冲突保留双方 | `v2/README.md:125-180`、`v2/server/internal/api/api.go:30-31` |
 | 部署草案 | Dockerfile / compose / systemd / Makefile / 构建脚本 / v2 CI 草案 | `v2/server/deploy/`、`v2/scripts/build.sh`、`v2/.github/workflows/ci.yml` |
 
-**口径说明**：上述「12 项 Go 测试 / 18 项内核测试 / 端到端手测」均来自 `v2/README.md` 的本地自述；Docker 镜像、性能目标（10x 吞吐、p99 < 100 ms 等）、Tauri 安装包均未由仓库 CI 验证，不能视为发布就绪。
+**口径说明**：上述「12 项 Go 测试 / 18 项内核测试 / 端到端手测」均来自 `v2/README.md` 的本地自述；Docker 镜像、性能目标（10x 吞吐、p99 < 100 ms 等）、Tauri 安装包当时均未由仓库 CI 验证、不能视为发布就绪（2026-11-04 历史快照，现已闭环）。
 
 ---
 
@@ -90,7 +90,7 @@ Windows 与 WSL Linux 二进制启动、`/api/ping`、`--version`、HTTPS 均通
 | 编号 | 等级 | 问题 | 证据 | 影响 |
 | --- | --- | --- | --- | --- |
 | R1 | P0 | `v2/client/src-tauri/target/`（6884 个文件、约 8 GB）、`v2/server/bin/*.exe`、`v2/superseded/server/*.exe` 未被忽略 | 根 `.gitignore` 仅忽略 `desktop/core/target/`、通用 `build/` `dist/` | `git add -A` 会污染仓库并可能触发体积限制 |
-| R2 | P0 | v2 的 CI 位于 `v2/.github/workflows/ci.yml`，GitHub Actions 只识别仓库根 `.github/workflows/` | `.github/workflows/ci.yml` 无 Go / Tauri job；`release.yml` 只发 v1 资产 | v2 的 `go test -race`、Tauri 构建、Docker 冒烟从未在流水线执行 |
+| R2 | P0 | v2 的 CI 位于 `v2/.github/workflows/ci.yml`，GitHub Actions 只识别仓库根 `.github/workflows/` | `.github/workflows/ci.yml` 无 Go / Tauri job；`release.yml` 只发 v1 资产 | v2 的 `go test -race`、Tauri 构建、Docker 冒烟在 2026-11-04 前从未在流水线执行（现已闭环） |
 | R3 | P0 | Tauri 前端存在构建阻塞疑点：`index.html` 引用不存在的 `/src/styles.css`；`dist/index.html` 仅为 `Loading...` 占位且被忽略；`tauri.conf.json` 引用不存在的 `icons/icon.icns` | `v2/client/index.html:7`、`v2/client/dist/index.html:1`、`v2/client/src-tauri/tauri.conf.json:43` | `npm run build` / `npm run tauri build` 可能直接失败或产出空壳安装包 |
 | R4 | P0 | 本机无 `git` 可执行文件（`where.exe git` 与常见安装路径均无结果）；仓库 reflog 只有一条 `clone` 记录 | 环境探测、`.git/logs/HEAD` | 无法在本地执行 `status` / `diff` / `commit` / `push`，提交需换环境或由 IDE 内置 Git 完成 |
 | R5 | P1 | v2 客户端能力回退：`watcher::spawn(..., false, ...)` 明确关闭 P2P；`selfshare-core/tls` 未启用，而 Go 服务端支持 HTTPS | `v2/client/src-tauri/src/sync/engine.rs:220-221`、`desktop/core/Cargo.toml:21-27` | 连不上 HTTPS 服务端；v2 无 P2P 数据面，与 README 宣传的 `--p2p` 不一致 |
@@ -187,8 +187,8 @@ Scope: .gitignore, .github/workflows/ci-v2.yml, release.yml,
        README/CHANGELOG/CONTRIBUTING/docs/wiki, v2/README.md,
        v2/ARCHITECTURE.md, PROJECT_STATUS.md.
 Verify: static workflow review + local test runs listed above.
-Unverified: GitHub Actions / Release pipeline (requires push);
-            this environment has no git CLI, no commit/push performed.
+Unverified (2026-11-04 snapshot, since closed by CI): GitHub Actions / Release pipeline (requires push);
+            this environment had no git CLI, no commit/push performed at that time.
 Refs: PROJECT_STATUS.md §1-§5
 ```
 

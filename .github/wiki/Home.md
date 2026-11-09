@@ -34,6 +34,7 @@
 ## 仓库
 
 - 源码：https://github.com/wakawakalululu/SelfShare
-- 下载：https://github.com/wakawakalululu/SelfShare/releases
+- 下载（稳定版 v2.0.0）：https://github.com/wakawakalululu/SelfShare/releases/tag/v2.0.0
+- latest 当前为演练发布 `v1.1.0`（8 资产），按用户决定保留；稳定版请指定 `v2.0.0`（7 资产）
 - 文档站：https://wakawakalululu.github.io/SelfShare/
 - 问题反馈：https://github.com/wakawakalululu/SelfShare/issues

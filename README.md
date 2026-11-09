@@ -3,7 +3,7 @@
 自建的跨主机文件夹同步。放一个文件夹，另一台机器输入一串码，两边内容自动一致；冲突不丢数据。
 
 [![CI](https://github.com/wakawakalululu/SelfShare/actions/workflows/ci.yml/badge.svg)](https://github.com/wakawakalululu/SelfShare/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/wakawakalululu/SelfShare)](https://github.com/wakawakalululu/SelfShare/releases)
+[![Release v2.0.0](https://img.shields.io/badge/Release-v2.0.0-blue)](https://github.com/wakawakalululu/SelfShare/releases/tag/v2.0.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ---
@@ -100,7 +100,9 @@ docker run -d --name selfshare -p 8484:8484 -v selfshare-data:/data selfshare-se
 
 ## 下载
 
-[最新 Release](https://github.com/wakawakalululu/SelfShare/releases) 里有 Windows 便携包（解压即用）和服务端压缩包。
+[稳定版 v2.0.0](https://github.com/wakawakalululu/SelfShare/releases/tag/v2.0.0) 里有 Windows 便携包（解压即用）和服务端压缩包。
+
+> latest 当前为演练发布 `v1.1.0`（8 资产），按用户决定保留；稳定版请指定 `v2.0.0`（7 资产）。
 
 ## 限制
 
@@ -111,7 +113,7 @@ docker run -d --name selfshare -p 8484:8484 -v selfshare-data:/data selfshare-se
 
 ## 开发
 
-Python 31 个测试方法、Rust 内核 18 项测试、Go 服务端 20 项测试，`flutter analyze` 零问题。详见 [CONTRIBUTING.md](CONTRIBUTING.md) 与 [v2/README.md](v2/README.md)。
+Python 31 个测试方法、Rust 内核 23 项测试（历史 18 项）、Go 服务端 22 项测试（历史 20 项），`flutter analyze` 零问题。详见 [CONTRIBUTING.md](CONTRIBUTING.md) 与 [v2/README.md](v2/README.md)。
 
 ## 许可
 
