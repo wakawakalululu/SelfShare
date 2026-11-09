@@ -446,3 +446,55 @@ func TestNormRelTrimContract(t *testing.T) {
 		t.Fatalf("trimmed '..' must error: %q,%v", got, err)
 	}
 }
+
+// C4-1 / O-7：del 缺 BaseHash 且远端有内容时，不得静默覆盖第三方新编辑。
+// 正常删除（带正确 BaseHash）仍必须生效，作为对照。
+func TestCommitDelWithoutBaseRejectsRemoteEdit(t *testing.T) {
+	v := tempVault(t)
+	a, _ := v.PutBlobBytes([]byte("v1"))
+	b, _ := v.PutBlobBytes([]byte("important v2 edit"))
+
+	res0, err := v.Commit([]Op{putOp("keep.txt", a, nil)}, "hostA")
+	if err != nil || len(res0.Applied) != 1 || res0.HeadRev != 1 {
+		t.Fatalf("baseline put: %+v %v", res0, err)
+	}
+	// B 在 manifest→commit 窗口内把远端更新为 v2
+	res1, err := v.Commit([]Op{putOp("keep.txt", b, strPtr(a))}, "hostB")
+	if err != nil || len(res1.Applied) != 1 || res1.HeadRev <= res0.HeadRev {
+		t.Fatalf("remote edit: %+v %v", res1, err)
+	}
+	st1, err := v.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 畸形/旧客户端发无 BaseHash 的 del
+	res2, err := v.Commit([]Op{{Op: "del", Path: "keep.txt", BaseHash: nil}}, "legacy")
+	if err != nil || len(res2.Applied) != 0 || len(res2.Conflicts) != 1 {
+		t.Fatalf("no-base del must be rejected: %+v %v", res2, err)
+	}
+	c := res2.Conflicts[0]
+	if c.Path != "keep.txt" || c.Reason != "remote_changed" ||
+		c.RemoteHash == nil || *c.RemoteHash != b || c.RemoteRev != res1.HeadRev {
+		t.Fatalf("unexpected conflict: %+v (want hash=%s rev=%d)", c, b, res1.HeadRev)
+	}
+	if res2.HeadRev != res1.HeadRev || v.HeadRev() != res1.HeadRev {
+		t.Fatalf("head_rev must not move: %d -> %d", res1.HeadRev, res2.HeadRev)
+	}
+	st2, err := v.Stat()
+	if err != nil || st2.Versions != st1.Versions || st2.HeadRev != st1.HeadRev {
+		t.Fatalf("versions/head_rev regressed: %+v -> %+v %v", st1, st2, err)
+	}
+	entries, _, err := v.Manifest(0)
+	if err != nil || len(entries) != 1 || entries[0].Deleted ||
+		entries[0].Hash == nil || *entries[0].Hash != b {
+		t.Fatalf("remote edit must survive: %+v %v", entries, err)
+	}
+
+	// 对照：带正确 BaseHash 的正常删除仍然生效
+	res3, err := v.Commit([]Op{{Op: "del", Path: "keep.txt", BaseHash: strPtr(b)}}, "hostB")
+	if err != nil || len(res3.Applied) != 1 || res3.Applied[0].Action != "del" ||
+		res3.HeadRev <= res2.HeadRev {
+		t.Fatalf("normal delete must still work: %+v %v", res3, err)
+	}
+}

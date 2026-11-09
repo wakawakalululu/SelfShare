@@ -175,6 +175,34 @@ class SyncTestCase(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join(self.a, "keep.txt")))
         self.assertEqual(read(os.path.join(self.a, "keep.txt")), "important change")
 
+    def test_delete_without_base_never_overwrites_new_remote_edit(self):
+        """C4-1 / O-7：畸形/旧客户端发 del(base_hash=None) 不得静默删除远端新编辑。
+
+        L4 时整个用例打到真实 Go 二进制，同时验证两端实现；正常删除由
+        test_delete_propagates / test_delete_vs_edit_keeps_edit 守护。
+        """
+        write(os.path.join(self.a, "keep.txt"), "v1")
+        self.sync(self.a)
+        self.sync(self.b)
+        write(os.path.join(self.b, "keep.txt"), "important v2 edit")
+        self.sync(self.b)  # 远端已由另一客户端更新为 v2
+
+        result = self.fx.client().commit(
+            [{"op": "del", "path": "keep.txt", "base_hash": None}],
+            origin="legacy-client",
+        )
+        self.assertEqual(len(result.get("conflicts", [])), 1, str(result))
+        self.assertEqual(result["conflicts"][0]["reason"], "remote_changed")
+        self.assertNotIn(
+            "keep.txt", [a["path"] for a in result.get("applied", [])], str(result)
+        )
+
+        # 远端内容未丢：A 重新同步应拉回 v2
+        ra = self.sync(self.a)
+        self.assertEqual(
+            read(os.path.join(self.a, "keep.txt")), "important v2 edit", ra.summary()
+        )
+
     def test_ignore_rules_respected(self):
         write(os.path.join(self.a, ".selfshareignore"), "*.tmp\nbuild/\n")
         write(os.path.join(self.a, "keep.txt"), "keep")
