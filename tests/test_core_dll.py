@@ -6,7 +6,8 @@
 
     SELFSHARE_CORE_DLL=/path/to/selfshare_core.dll python tests/test_core_dll.py -v
 
-只做无副作用的 ABI 冒烟（版本 / 初始化 / 关停 / 只读状态 / 不可达探测），不做挂载同步；
+只做无副作用的 ABI 冒烟（版本 / 初始化 / 关停 / 只读状态 / 不可达探测 /
+挂载根查找无匹配文案），共 7 例，不做挂载同步；
 行为级验证由 Rust 侧 `cargo test`（CI L2）与桌面端覆盖。
 """
 
@@ -15,7 +16,9 @@ from __future__ import annotations
 import ctypes
 import json
 import os
+import tempfile
 import unittest
+import uuid
 
 DLL_PATH = os.environ.get("SELFSHARE_CORE_DLL")
 
@@ -104,6 +107,29 @@ class CoreDllTestCase(unittest.TestCase):
         # client.rs:386-394：连接失败返回 false；不启动服务端，不读写任何数据
         data = self._unwrap(self._str_call("ss_probe", "http://127.0.0.1:1/"))
         self.assertIs(data.get("ok"), False, "不可达地址不应被判定为 SelfShare 服务端")
+
+    def test_find_mount_reports_no_match_error(self):
+        # 冻结文案耦合：desktop/app/lib/rust_bridge.dart 的
+        # _findMountNoMatchError 与 ffi.rs:330 的 err_json 文案必须逐字一致；
+        # tryFindMount() 仅当 error 等于本常量时把「无匹配」折叠为 null。
+        # 文案一旦变更，此用例须与 Dart 白名单、ffi.rs 三处同步。
+        no_match_error = "不在任何同步目录内"
+        # util.rs:289-298：find_mount_root 从 start 逐级 parent 检查
+        # <dir>/.selfshare/config.json 是否存在。纯字符串构造 tempdir 下
+        # 「唯一子目录 + 文件名」，路径无需真实存在：.exists() 探测每级都
+        # 不命中，且不创建目录、不写配置、不创建挂载，也不依赖网络。
+        path = os.path.join(
+            tempfile.gettempdir(),
+            "selfshare-no-mount-" + uuid.uuid4().hex,
+            "probe.txt",
+        )
+        data = self._str_call("ss_find_mount", path)
+        self.assertIs(data.get("ok"), False, "无匹配时 ss_find_mount 应返回 ok:false")
+        self.assertEqual(
+            data.get("error"),
+            no_match_error,
+            "ss_find_mount 无匹配文案必须与 rust_bridge.dart 白名单逐字一致",
+        )
 
 
 if __name__ == "__main__":
