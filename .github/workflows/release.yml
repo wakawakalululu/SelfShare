@@ -246,15 +246,31 @@ jobs:
           done
           [ "$fail" -eq 0 ] || { echo "--- inventory on failure ---"; inventory; exit 1; }
 
-          # linux/amd64 二进制可运行冒烟：chmod +x 后 --version 必须包含 2.0.0
+          # S5: 2+5+1 只数分组；此处补 dist 全量=8，且三组数组(= files: 三条 glob)
+          # 展开集合必须与全量集合逐项相等，杜绝孤儿文件/子目录杂项与发布集合漂移。
+          all_list="$(find dist -type f | sort)"
+          all_count="$(find dist -type f | wc -l)"
+          covered_list="$(printf '%s\n' "${zips[@]}" "${servers[@]}" "${installers[@]}" | sort)"
+          if [ "$all_count" -ne 8 ] || [ "$all_list" != "$covered_list" ]; then
+            echo "::error::dist has $all_count files; file set != 3 published globs"
+            echo "--- all dist files ---"; printf '%s\n' "$all_list"
+            echo "--- matched by globs ---"; printf '%s\n' "$covered_list"
+            echo "--- orphans ---"; comm -23 <(printf '%s\n' "$all_list") <(printf '%s\n' "$covered_list")
+            echo "--- inventory on failure ---"; inventory; exit 1
+          fi
+          echo "dist file set matches the 3 published globs (8 files, no orphans)."
+
+          # linux/amd64 二进制可运行冒烟：chmod +x 后实跑 --version，只要求 banner
+          # 以 "selfshare-server " 开头（与 ci-v2.yml 同口径），不绑定 serverVersion
+          # 具体数字，tag 升到 v2.0.1 / v3 时不会误失败。
           bin="dist/v2/selfshare-server-linux-amd64"
           chmod +x "$bin"
           version_output="$("$bin" --version 2>&1)"
           echo "--- $bin --version ---"
           echo "$version_output"
           case "$version_output" in
-            *2.0.0*) ;;
-            *) echo "::error::$bin --version did not contain 2.0.0"; exit 1 ;;
+            'selfshare-server '*) ;;
+            *) echo "::error::$bin --version is not a 'selfshare-server ' banner: $version_output"; exit 1 ;;
           esac
 
           # 便携包 zip 内必须含 selfshare_core.dll（Compress-Archive 带 SelfShare/ 前缀，按 basename 匹配）
