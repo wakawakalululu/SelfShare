@@ -113,7 +113,7 @@ docker run -d --name selfshare -p 8484:8484 -v selfshare-data:/data selfshare-se
 
 ## 开发
 
-Python 31 个测试方法、Rust 内核 23 项测试（历史 18 项）、Go 服务端 22 项测试（历史 20 项），`flutter analyze` 零问题。详见 [CONTRIBUTING.md](CONTRIBUTING.md) 与 [v2/README.md](v2/README.md)。
+Python 32 个测试方法、Rust 内核 25 项测试（历史 18 项）、Go 服务端 23 项测试（历史 20 项），`flutter analyze` 零问题。详见 [CONTRIBUTING.md](CONTRIBUTING.md) 与 [v2/README.md](v2/README.md)。
 
 ## 许可
 

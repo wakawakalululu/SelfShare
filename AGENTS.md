@@ -28,7 +28,7 @@
 | 路径 | 职责 | 改动前必读 |
 | --- | --- | --- |
 | `selfshare/` | v1 服务端、CLI、三方合并、配对、P2P（**仅标准库**） | `selfshare/sync.py` 顶部 8 情形表 |
-| `tests/` | Python `unittest` 31 例（sync 20 / p2p 6 / pairing 5）+ 可选 DLL 冒烟 9 例（`test_core_dll.py`，`SELFSHARE_CORE_DLL` 门控）；`external_server.py` 可把同一套用例打到 Go 二进制 | `CONTRIBUTING.md:59-66` |
+| `tests/` | Python `unittest` 32 例（sync 21 / p2p 6 / pairing 5）+ 可选 DLL 冒烟 9 例（`test_core_dll.py`，`SELFSHARE_CORE_DLL` 门控）；`external_server.py` 可把同一套用例打到 Go 二进制 | `CONTRIBUTING.md:59-66` |
 | `desktop/core/` | Rust 内核 + 19 个 C ABI + 独立 CLI | `desktop/core/include/selfshare_core.h` |
 | `desktop/app/` | Flutter GUI / 托盘 / 开机自启 | `desktop/app/lib/rust_bridge.dart` |
 | `v2/server/` | Go `net/http` + `modernc.org/sqlite`；API / store / 配对 / peers | `v2/server/internal/api/api.go:3-8` 路由表 |
@@ -109,10 +109,10 @@ Windows runner 上跑 CLI 冒烟需 `PYTHONUTF8=1` / `PYTHONIOENCODING=utf-8`（
 
 | 层 | 内容 | 对应 CI |
 | --- | --- | --- |
-| L1 | Python 31 例（sync 20 / p2p 6 / pairing 5）+ 可选 DLL 冒烟 9 例（`test_core_dll.py`，`SELFSHARE_CORE_DLL` 门控） | `ci.yml` `python`；DLL 冒烟由 `core-dll-smoke` job 覆盖（已实跑）；四方名称一致性检查脚本 `desktop/scripts/check_abi_names.py`（header / dart / abi / `ffi.rs` Rust 导出）由 `ci.yml` 对应步骤在 CI 中执行（口径见 `docs/contracts/abi-ipc.md` C5-1/C5-6） |
-| L2 | Rust 内核 23 例 + 集成测试（历史 18 例） | `ci.yml` `rust` |
-| L3 | Go 22 例 + `go vet` + `go test -race`（历史 20 例） | `ci-v2.yml` `server-test` |
-| L4 | 跨实现：Python 兼容套件对接真实 Go 二进制 | `ci-v2.yml` `compat` |
+| L1 | Python 32 例（sync 21 / p2p 6 / pairing 5）+ 可选 DLL 冒烟 9 例（`test_core_dll.py`，`SELFSHARE_CORE_DLL` 门控） | `ci.yml` `python`；DLL 冒烟由 `core-dll-smoke` job 覆盖（已实跑）；四方名称一致性检查脚本 `desktop/scripts/check_abi_names.py`（header / dart / abi / `ffi.rs` Rust 导出）由 `ci.yml` 对应步骤在 CI 中执行（口径见 `docs/contracts/abi-ipc.md` C5-1/C5-6） |
+| L2 | Rust 内核 25 例 + 集成测试（历史 18 例） | `ci.yml` `rust` |
+| L3 | Go 23 例 + `go vet` + `go test -race`（历史 20 例） | `ci-v2.yml` `server-test` |
+| L4 | 跨实现：Python 兼容套件对接真实 Go 二进制（sync 21 + p2p 6 = 27 例） | `ci-v2.yml` `compat`；D 轨道 G3 硬门槛 |
 | L5 | 前端 `npm run build` + Tauri `cargo check --all-targets`；`engine_state` 集成测试 | `ci-v2.yml` `client`（前端构建 + Tauri 打包）；`ci.yml` `v2-client`（cargo check + `engine_state`，已实跑） |
 | L6 | Flutter `analyze` + Windows 构建 | `ci.yml` `gui` |
 | L7 | Docker 镜像 `/api/ping`、二进制 `--version` / HTTPS、Release 资产 | `ci-v2.yml` `docker`、`release.yml` |

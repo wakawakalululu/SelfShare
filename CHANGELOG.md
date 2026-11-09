@@ -24,7 +24,9 @@
 - 新增三方名称一致性只读检查 `desktop/scripts/check_abi_names.py`：比对 `selfshare_core.h` 的 19 个 `ss_*` 声明、`rust_bridge.dart` 的 `lookupFunction` 名称与 `tests/test_core_dll.py` 的 `ABI_SYMBOLS`，不一致时打印差异并以非 0 退出；`ci.yml` 在 `core-dll-smoke` job 补步骤于 CI 中执行该脚本（本地可直接运行 `python desktop/scripts/check_abi_names.py`）。`tests/test_core_dll.py` 同步新增 1 例，用 ctypes 调 `ss_find_mount` 传入确定不存在的路径，断言「无匹配」返回 `{"ok":false,"error":"不在任何同步目录内"}`（与 `rust_bridge.dart` 的 `_findMountNoMatchError` 白名单逐字一致），DLL 冒烟由 6 例增至 7 例。
 - 本轮（LOOP-20261109-04）：`desktop/scripts/check_abi_names.py` 四方加固（header / dart / abi / `ffi.rs` Rust 导出；注释剥离、跨行声明与泛型解析、纳入 Rust 导出）并新增 `tests/test_check_abi_names.py` 自测（`python tests/test_check_abi_names.py -v`）；`tests/test_core_dll.py` 新增白名单静态一致性与 A 类形状表驱动断言 2 例，DLL 冒烟现为 9 例。
 
-测试口径：Python 31 例（sync 20 / p2p 6 / pairing 5）+ 可选 DLL 冒烟 9 例、Rust 内核 23 例（历史 18 例）、Go 22 例（历史 20 例）、Tauri `engine_state` 测试。
+- `selfshare-dev-team` D 轨道契约先行（`LOOP-20261109-05`）：新建 `docs/contracts/storage-layout.md` C3（rel 键规范化，三端 trim 收敛）、更新 `security-contract.md` C6-2（盘符 containment 按宿主 OS 分支冻结）、登记 `OPEN-DECISIONS.md` O-6（v2 变更记录）；Rust `norm_rel` 补 trim 并同步 `state.rs::base_of` 归一，Python / Rust / Go 三端各补 trim 与 OS 分支断言。**D2 盘符语义冻结**，不改 Python / Go 生产代码、`ServiceVersion` 与 C5 形状。
+
+测试口径：Python 32 例（sync 21 / p2p 6 / pairing 5）+ 可选 DLL 冒烟 9 例、Rust 内核 25 例（历史 18 例）、Go 23 例（历史 20 例）、Tauri `engine_state` 测试。
 
 ---
 
