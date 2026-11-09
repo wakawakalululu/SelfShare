@@ -119,7 +119,7 @@ Windows runner 上跑 CLI 冒烟需 `PYTHONUTF8=1` / `PYTHONIOENCODING=utf-8`（
 
 没跑过的层要写明原因（如无 Docker 引擎、无 gcc/cgo、无 Flutter SDK），不得用「应该没问题」代替。
 
-**验证覆盖现状（静态盘点，不是已承诺能力）**：HTTPS 自签与 `GET /api/pair` 冒烟已由 `ci-v2.yml` `compat` job 覆盖（run `42474993754` 实证）；`engine_state` 为 6 例（run `42415759818` 全绿）；DLL 冒烟 `core-dll-smoke` 早期 6 例（run `42415759818`），新增 `ss_find_mount` 一例后为 7 例，run `42558376176` 实证 `Ran 7 tests`——此「6→7」仅指 DLL 冒烟，与 `engine_state` 6 例无关；本轮新增白名单静态一致性与 A 类形状表驱动断言 2 例后，DLL 冒烟现为 9 例。四类必测中「peer 不可达回退」已补独立断言（`tests/test_p2p.py::PeerFallbackTestCase`），「删除与编辑相撞」两向已由 Rust 集成与 Go store 双层断言覆盖。涉及未覆盖场景时必须补用例并说明验证方式，不得写成「已由 CI 覆盖」。
+**验证覆盖现状（静态盘点，不是已承诺能力）**：HTTPS 自签与 `GET /api/pair` 冒烟由 `ci-v2.yml compat` 覆盖；`engine_state` 6 例、DLL 冒烟 `core-dll-smoke` 9 例、Rust lib 25 例、Go 24 例均由 `ci.yml` / `ci-v2.yml` 实证（run 编号与逐轮演进史见 `.codebuddy/skills/软件开发专家团/memory/`，不在此重复）。四类必测中「peer 不可达回退」有独立断言（`tests/test_p2p.py::PeerFallbackTestCase`），「删除与编辑相撞」两向由 Rust 集成与 Go store 双层覆盖。**当前状态与后续路线的唯一入口是 `PROJECT_STATUS.md` §0**；涉及未覆盖场景时必须补用例并说明验证方式，不得写成「已由 CI 覆盖」。
 
 ## 7. 交付物归档映射（专家团按此落盘，不另建体系）
 

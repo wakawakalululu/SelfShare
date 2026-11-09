@@ -1,14 +1,54 @@
-# 项目状态更新｜2026-11-04
+# 项目状态与后续路线｜2026-11-09（单一事实源）
 
-> 仓库：`wakawakalululu/SelfShare`
-> 基线（历史快照）：分支 `master` @ `42d6764`；当时最近发布标签 `v1.3.0` @ `714e9ee`（2026-11-03）
-> 分析方式：源码 / 文档 / 工作流静态审阅 + Git 索引与打包对象比对
-> 状态：本文 §1.2–§5 为 2026-11-04 基线（`42d6764`）的盘点与计划快照，R1–R12 已全部闭环；**当前状态（2026-11-08）**：`master` == `origin/master` @ `03dc924`、工作区干净，4 条 push 流水线与 `release.yml` 演练 run 全绿；稳定发布 `v2.0.0`（7 资产），`get_latest_release` 为演练发布 `v1.1.0`（8 资产，用户决定保留不删除）；详见 `v2/RELEASE_SUMMARY.md` 首节
-> 维护约定：阶段性交付后更新本文件，提交信息引用本文的 `R*` 风险编号与 `P*` 计划编号
+> **本文 §0 是当前状态与后续路线的唯一权威入口**；§1 起为 2026-11-04 基线（`42d6764`）的历史盘点快照，R1–R12 已全部闭环，**不再作为当前口径维护**。
+> 仓库：`wakawakalululu/SelfShare`；基线：`master` == `origin/master` @ `315cb20`，工作区干净
+> 发布：稳定版 `v2.0.0`（7 资产）；`get_latest_release` = 演练发布 `v1.1.0`（8 资产，用户决定**保留不删除**）；下载稳定版须显式指定 `v2.0.0`
+> 验证基线：L1 33 / L4 28 / DLL 冒烟 9 / Rust 25 / Go 24 / ABI 四方 19；4 条 push 流水线与 `release.yml` 正向演练全绿
+> 维护约定：阶段性交付后只更新本文 §0 与 `CHANGELOG.md [Unreleased]`；`AGENTS.md` 只留规范与门禁、不放演进史；过程性记录归 `.codebuddy/skills/软件开发专家团/memory/`（不入库）
 
 ---
 
-## 1. 变更摘要
+## 0. 当前状态与后续路线（唯一入口）
+
+### 0.1 权威文档地图（避免同一事实多处维护）
+
+| 想查什么 | 唯一去哪 |
+| --- | --- |
+| 当前状态、后续路线 | **本文 §0** |
+| 编码 / 提交 / 门禁红线 | `AGENTS.md` |
+| 契约 C1–C6 | `docs/contracts/`：`abi-ipc.md`(C5)、`storage-layout.md`(C3)、`merge-semantics.md`(C4)、`security-contract.md`(C6)、`requirement-card.md`(需求卡) |
+| 决策与未决项 | `docs/decisions/OPEN-DECISIONS.md`（O-1~O-7）、`ADR-001`、`ADR-002` |
+| 本地 / CI 验证命令 | `CONTRIBUTING.md`（当前命令）、`AGENTS.md` §6（分层门禁） |
+| v2.0.0 发布当时的验证数据 | `v2/RELEASE_SUMMARY.md`（**历史快照**） |
+| 过程日志 / 交接卡 | `.codebuddy/skills/软件开发专家团/memory/`（不入库） |
+
+### 0.2 当前状态（收敛后）
+
+| 维度 | 事实 |
+| --- | --- |
+| 代码 | `315cb20`；D6 / C4-1 纵深防御缺口已修复（Python + Go 两端判据收敛，正常删除回归全绿） |
+| 契约 | C3 rel 键规范化、C4 合并语义、C5 ABI/IPC 形状（冻结）、C6 路径 containment 均已落盘；O-1~O-3 已裁决，O-5/O-6 维持冻结 |
+| 发布 | `v2.0.0` 7 资产稳定版不变；演练 `v1.1.0` 8 资产已由正向演练覆盖产物、保留不删除 |
+| 验证 | L1 33/33、L4 28/28（新编译 Go 二进制）、DLL 9/9、Go race、Rust lib/integration、HTTPS 冒烟、Release 8 资产端到端均有实证 |
+| 遗留 | D7（P1 UI 假成功）与下列 P1/P2 项；无 P0 未闭环项 |
+
+### 0.3 后续路线（按优先级，一次迭代一个目标）
+
+| 优先级 | 项 | 内容 | 验收命令 |
+| --- | --- | --- | --- |
+| **P1** | **D7** | `sync_once` 把 `Err` 转 `SyncStatus{errors}` 后恒 `Ok`，前端丢弃返回值 → 失败却显示「同步完成」。修错误传播 + 前端状态显示；不新增 IPC、不改返回形状 | `cargo test --test engine_state`、`npm run build`、L4 28 例 |
+| P1 | 存量库只读扫描 | 部署环境只读扫 `vault.db` 的 `files.rel`（首尾空白 / 盘符），作为 O-1/O-6 未来是否立项的依据（本机 `*.db` 数量 0） | 只读 SQL + 结论记录 |
+| P2 | O-2 / O-3 轻量 UI | 设置页首次进入一次性提示；>512 MiB 文件进度提示 | `npm run build` + 静态扫描 |
+| P2 | `flutter test` 冒烟 | `desktop/app/test/` 桥接层冒烟接入 `ci.yml gui`（`ss_find_mount` 无自然业务调用点，不硬接线） | `flutter test`（CI） |
+| P2 | 断言加固 | `integration.rs` 的 `ss_progress` 子串断言改 `serde_json` 反序列化，消除形状改动时的静默假通过 | `cargo test --release --test integration` |
+| P2 | 隔离环境冒烟 | NSIS 真实安装 + GUI 窗口、非 Windows 产物实机、并发基准 | 一次性 VM / 沙箱 |
+| P3 | 工程债 | `abi-ipc.md` C5-6 行号近似引用、CI job 重复收敛、CHANGELOG 历史锚点 | 全文检索 + CI 时长对比 |
+
+> 说明：O-5（C ABI 形状 v2 统一）与 O-6（盘符语义统一）**不列入实施路线**——均属不可兼容 v2 变更，按红线维持冻结；若立项须先明确大版本、存量库扫描、三端同步与 L3/L4 实证。
+
+---
+
+## 1. 变更摘要（2026-11-04 历史快照，不作当前口径）
 
 ### 1.1 本次更新内容
 

@@ -6,7 +6,7 @@
 | 版本 | 服务端 `2.0.0`（`--version`）；HTTP `ServiceVersion` 保持 `1.0` 以兼容 v1 客户端 |
 | 记录日期 | 2026-11-04（2026-11-05 推送与 CI 复核更新） |
 | 基线 | `master` `42d67645af534c5eec3c43668311604616381745`；`v1.3.0` tag `714e9ee91cfe0e69ad9fb25e4c3fdc9a37f36d85` |
-| 当前状态（2026-11-08） | `master` == `origin/master` @ `03dc924`，工作区干净；稳定发布 `v2.0.0` 附注 tag（`1c8559c`）与 Release（7 个资产、notes 51 行）保持不变；`release.yml` 演练 run `42424638532` 全绿并发布 `v1.1.0`（8 资产），该演练 Release 按用户决定保留、当前为 `get_latest_release`；发布前 8 资产校验、notes 提取、glob 互斥均由真实流水线实证；`CI`（10 job）/ `CI v2`（9 job）/ `Pages` / `Build, Test & Deploy` 最新运行全部 success；便携包解压即用、包内 DLL 冒烟 6 例、L1 31 例、L4 26 例均通过。下文 §2 起为 v2.0.0 发布时的历史记录，不作当前口径 |
+| 状态 | **本表全文（含 §2 起）是 v2.0.0 发布当时（2026-11-04/05）的历史验证记录，不作当前口径**。当前基线、稳定版 / 演练发布关系、验证例数与后续路线以 `PROJECT_STATUS.md` §0 为唯一入口；`AGENTS.md` §6 为分层门禁。当时数据：v2.0.0 附注 tag `1c8559c`、Release 7 资产、notes 51 行；下文数字（L1 31 / L4 26 / DLL 6 例）仅为当时实测 |
 | 数据来源 | 本机命令输出 + GitHub Actions / Releases API；对照 `v2/README.md`「验证状态」、`PROJECT_STATUS.md` §1.1.1、`CHANGELOG.md` `[v2.0.0]` |
 
 ---
