@@ -94,7 +94,7 @@ unner\Release  selfshare_desktop.exe      1.7 MB
 - watch：`ss_watch_start`、`ss_watch_stop`、`ss_watch_status`
 - 历史：`ss_history`、`ss_restore`、`ss_remote_stat`
 
-构建时自动检查 Rust 导出、C 头文件和 Dart lookup 三方名称是否一致。
+Rust 导出、C 头文件和 Dart lookup 三方名称是否一致，由只读检查脚本 `desktop/scripts/check_abi_names.py` 保证：本地可直接运行 `python desktop/scripts/check_abi_names.py`，`ci.yml` 的对应步骤在 CI 中执行该脚本；`build_windows.ps1` 构建流程本身不做该检查。
 
 ## 多端策略
 

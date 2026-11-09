@@ -46,7 +46,7 @@ C ABI 导出 **19 个**，清单以 `selfshare_core.h:15-33` 为准。除 `ss_fr
   直取顶层字段（`:148` `version()`、`:228` `progress()`、`:249` `watchStatus()`）。
   `ss_init`（`:60`）与 `ss_shutdown`（`:294`）也绕过，属既有端点不一致。
 - Python `_unwrap`（`test_core_dll.py:75-78`）更严格：`assert ok is True` 后取 `data`；
-  6 个用例（`:63-106`）中有 3 个显式锁定裸 JSON、1 个锁定双层 `ok`，**是形状回归基线**。
+  7 个用例中有 3 个显式锁定裸 JSON、1 个锁定双层 `ok`、1 个锁定 `ss_find_mount` 无匹配文案，**是形状回归基线**。
 - Rust `integration.rs:333-401` 用 `CStr` + 子串断言（不反序列化）；其中 `:386-398`
   直接匹配 `ss_progress` 裸文本，若包装进 `data` 会变成**静默假通过**。
 - 形状变更须**四处同步**：`selfshare_core.h` / `rust_bridge.dart` /
@@ -79,7 +79,7 @@ Dart 顶层字段取值全部变 `null`（`watchStatus()` 恒 `false`）、Pytho
 
 | 层 | 命令 / job | 说明 |
 | --- | --- | --- |
-| L1 | `SELFSHARE_CORE_DLL=<dll> python tests/test_core_dll.py -v`（6 例） | `ci.yml core-dll-smoke` 已覆盖（run `42474993786` 实证 success） |
+| L1 | `SELFSHARE_CORE_DLL=<dll> python tests/test_core_dll.py -v`（7 例） | `ci.yml core-dll-smoke` 已覆盖（run `42474993786` 实证 success，当时 6 例）；同 job 另执行 `desktop/scripts/check_abi_names.py` 三方名称检查 |
 | L2 | `cargo test --lib` / `cargo test --test integration` | `ci.yml rust` job；`ffi_pair_failure_resets_progress` 已在 `42474993786` 通过 |
 | L5 | `cargo test --test engine_state`（6 例） | `ci.yml v2-client`；`42474993786` 实证 6 passed |
 
