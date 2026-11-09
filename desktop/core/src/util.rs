@@ -10,11 +10,14 @@ use sha2::{Digest, Sha256};
 pub const STATE_DIR: &str = ".selfshare";
 pub const CHUNK: usize = 1 << 20;
 
-/// 与 Python 版一致：统一成 `/` 分隔、去掉前导 `/`、拒绝 `..`。
+/// 与 Python/Go 服务端对齐的三端 trim（C3-1，`docs/contracts/storage-layout.md`）：
+/// 反斜杠转正斜杠后对整串首尾 Unicode 空白 `trim()`（对齐 Python `strip()` / Go
+/// `TrimSpace`，O-6）；再切分：统一 `/` 分隔、去前导 `/`、丢空段与 `.` 段、拒绝 `..`。
 pub fn norm_rel(input: &str) -> Result<String, String> {
     let text = input.replace('\\', "/");
+    let trimmed = text.trim();
     let mut parts: Vec<&str> = Vec::new();
-    for seg in text.split('/') {
+    for seg in trimmed.split('/') {
         match seg {
             "" | "." => continue,
             ".." => return Err(format!("路径不能包含 '..'：{}", input)),
@@ -359,6 +362,46 @@ mod tests {
                 assert!(p.starts_with(&root), "路径 {:?} 逃出了 root：{:?}", rel, p);
             }
         }
+    }
+
+    #[test]
+    fn norm_rel_trims_like_python_and_go() {
+        // C3-1 / O-6：三端整串首尾 trim，对齐已发布 Python/Go 服务端。
+        let cases = [
+            ("  a/b.txt  ", "a/b.txt"),
+            ("\t a\\b.txt \r\n", "a/b.txt"),
+            ("\u{3000}a/b.txt\u{3000}", "a/b.txt"),
+            ("   ", ""),
+            (" \t\r\n ", ""),
+        ];
+        for (input, want) in cases {
+            assert_eq!(norm_rel(input).unwrap(), want);
+        }
+        let root = std::env::temp_dir().join("selfshare-abs-path-root");
+        assert!(abs_path(&root, "   ").is_err());
+        assert!(abs_path(&root, " \t\r\n ").is_err());
+    }
+
+    #[test]
+    fn abs_path_still_confines_after_trim() {
+        // C6-2 冻结：盘符语义按宿主 OS 分支，沿用「拒绝或仍在 root 内」容错断言。
+        let root = std::env::temp_dir().join("selfshare-abs-path-root");
+        let hostile = [
+            "  ../escape.txt  ",
+            "\t/etc/passwd\n",
+            " C:/Windows/win.ini ",
+            "  C:\\Windows\\win.ini  ",
+            "  a/b/file.txt  ",
+        ];
+        for rel in hostile {
+            if let Ok(p) = abs_path(&root, rel) {
+                assert!(p.starts_with(&root), "{:?} 逃出了 root：{:?}", rel, p);
+            }
+        }
+        assert_eq!(
+            abs_path(&root, "  a/b/file.txt  ").unwrap(),
+            root.join("a").join("b").join("file.txt")
+        );
     }
 
     #[test]

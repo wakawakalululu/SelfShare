@@ -157,7 +157,9 @@ impl LocalState {
     }
 
     pub fn base_of(&self, rel: &str) -> Option<&BaseEntry> {
-        self.snapshot.files.get(rel)
+        // 与 set_base 同款归一：trim 后键漂移会误报 remote_changed / 重复上传（C3-1、O-6）
+        let key = norm_rel(rel).ok()?;
+        self.snapshot.files.get(&key)
     }
 }
 
