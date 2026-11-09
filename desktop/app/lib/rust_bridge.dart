@@ -47,6 +47,8 @@ class RustBridge {
     _unmount = _lib.lookupFunction<_OneArgNative, _OneArgDart>('ss_unmount');
     _mountInfo =
         _lib.lookupFunction<_OneArgNative, _OneArgDart>('ss_mount_info');
+    _findMount =
+        _lib.lookupFunction<_OneArgNative, _OneArgDart>('ss_find_mount');
     _plan = _lib.lookupFunction<_OneArgNative, _OneArgDart>('ss_plan');
     _watchStart =
         _lib.lookupFunction<_OneArgNative, _OneArgDart>('ss_watch_start');
@@ -78,6 +80,7 @@ class RustBridge {
   late final _OneArgDart _probe;
   late final _OneArgDart _unmount;
   late final _OneArgDart _mountInfo;
+  late final _OneArgDart _findMount;
   late final _OneArgDart _plan;
   late final _OneArgDart _watchStart;
   late final _OneArgDart _restore;
@@ -195,6 +198,29 @@ class RustBridge {
 
   Map<String, dynamic> mountInfo(String folder) {
     return Map<String, dynamic>.from(_unwrap(_callOne(_mountInfo, folder)));
+  }
+
+  // C5-3：ss_find_mount 的「无匹配」与错误共用 {"ok":false,"error":...}，
+  // 唯一区分点是 ffi.rs:330 冻结文案；用白名单精确匹配，避免吞掉其它错误。
+  static const String _findMountNoMatchError = '不在任何同步目录内';
+
+  /// 查找 [path] 所属挂载根，命中返回 `{"root": ...}`（C5-2 A 类 data）。
+  /// 无匹配按 C5-3 保持可观测：[_unwrap] 抛 [SelfShareException]，此处不吞。
+  /// 需要「无匹配 → null」的调用方使用 [tryFindMount]。
+  Map<String, dynamic> findMount(String path) {
+    return Map<String, dynamic>.from(_unwrap(_callOne(_findMount, path)));
+  }
+
+  /// [findMount] 的可空变体：仅「无匹配」返回 null；其余 ok:false 仍由
+  /// [_unwrap] 原样抛 [SelfShareException]，绝不把真实错误折叠成 null。
+  /// 若上游文案变更，无匹配会退化为抛异常（fail-safe，不会静默吞错误）。
+  Map<String, dynamic>? tryFindMount(String path) {
+    final response = _callOne(_findMount, path);
+    if (response['ok'] == false &&
+        response['error']?.toString() == _findMountNoMatchError) {
+      return null;
+    }
+    return Map<String, dynamic>.from(_unwrap(response));
   }
 
   void unmount(String folder) => _unwrap(_callOne(_unmount, folder));
