@@ -11,10 +11,12 @@ Rust 内核产物（selfshare-core-windows = selfshare_core.dll），Go 服务�
     python desktop/scripts/ci_fetch.py release --tag v2.0.0 --list-only
     python desktop/scripts/ci_fetch.py release --tag v2.0.0 --name selfshare-server-2.0.0.zip
     python desktop/scripts/ci_fetch.py verify <file> --digest sha256:<hex>
-    python desktop/scripts/ci_fetch.py verify <file> --release v2.0.0
+    python desktop/scripts/ci_fetch.py verify <file> --release v2.0.0   # 与 --digest 互斥
 
 fetch 默认取该 workflow 在 master 上最新的成功 run 的指定产物；zip 解包到 --out 目录。
-release 取 tag（默认 latest）的发布资产，逐项按 GitHub API 的 digest 做 SHA256 校验。
+fetch / release 为强制校验：API 未带 digest 时不再「仅记录」，直接拒绝视为已校验。
+release 取 tag（默认 latest）的发布资产，逐项按 GitHub API 的 digest 做 SHA256 校验，
+且落盘前校验资产名为单名（拒绝 .. / 前导 / / 盘符 / 绝对路径）。
 Actions artifact（通道 A）与 Release 资产（通道 B）是两条不同来源，不得互相冒充。
 
 鉴权：优先 `GITHUB_TOKEN` 环境变量；否则调用 `git credential fill` 复用本机已存
@@ -108,10 +110,12 @@ def digest_of(data: bytes) -> str:
     return "sha256:" + hashlib.sha256(data).hexdigest()
 
 
-def check_digest(data: bytes, expected: str, label: str) -> None:
-    """按 GitHub API 的 digest 字段校验；API 未提供时只记录，不冒充校验通过。"""
+def check_digest(data: bytes, expected: str, label: str, strict: bool = False) -> None:
+    """按 GitHub API 的 digest 字段校验；API 未提供时 strict=False 仅记录、strict=True 拒绝视为已校验。"""
     actual = digest_of(data)
     if not expected:
+        if strict:
+            sys.exit("  %s: digest 不可用，拒绝视为已校验（API 未提供 digest，实际 %s）" % (label, actual))
         print("  %s: digest 不可用（API 未提供），仅记录 %s" % (label, actual))
         return
     if actual.lower() != expected.lower():
@@ -119,14 +123,27 @@ def check_digest(data: bytes, expected: str, label: str) -> None:
     print("  %s: %s OK" % (label, actual))
 
 
+def illegal_path(name: str) -> bool:
+    """单名非法路径判据：.. 段 / 前导 /（POSIX 绝对路径）/ 盘符（如 C:）。"""
+    norm = name.replace("\\", "/")
+    return (norm.startswith("/") or ".." in norm.split("/")
+            or (len(norm) > 1 and norm[1] == ":"))
+
+
 def safe_members(zf: zipfile.ZipFile) -> list[str]:
     """拒绝 .. / 绝对路径 / 盘符，避免产物 zip 写出目标目录。"""
     names = zf.namelist()
     for name in names:
-        norm = name.replace("\\", "/")
-        if norm.startswith("/") or ".." in norm.split("/") or (len(norm) > 1 and norm[1] == ":"):
+        if illegal_path(name):
             sys.exit("产物 zip 含非法路径 %r，拒绝解包" % name)
     return names
+
+
+def safe_asset_name(name: str) -> str:
+    """Release 资产落盘前单名校验，复用 illegal_path 判据，拒绝写出目标目录。"""
+    if not name or illegal_path(name):
+        sys.exit("Release 资产含非法名称 %r，拒绝落盘" % name)
+    return name
 
 
 def release_data(tok: str, tag: str) -> dict:
@@ -172,8 +189,9 @@ def main() -> None:
 
     p_ver = sub.add_parser("verify", help="校验本地产物 SHA256")
     p_ver.add_argument("file")
-    p_ver.add_argument("--digest", default=None, help="形如 sha256:<hex>")
-    p_ver.add_argument("--release", default=None, help="按该 tag 的同名 Release 资产取 digest")
+    src = p_ver.add_mutually_exclusive_group()
+    src.add_argument("--digest", default=None, help="形如 sha256:<hex>")
+    src.add_argument("--release", default=None, help="按该 tag 的同名 Release 资产取 digest")
 
     args = parser.parse_args()
     tok = token()
@@ -205,7 +223,7 @@ def main() -> None:
         print("run %d (%s) -> %s (%.1f MB)" % (
             run["id"], run["head_sha"][:7], art["name"], art["size_in_bytes"] / 1e6))
         body = download("/repos/%s/actions/artifacts/%d/zip" % (repo_slug(), art["id"]), tok)
-        check_digest(body, art.get("digest", ""), art["name"] + ".zip")
+        check_digest(body, art.get("digest", ""), art["name"] + ".zip", strict=True)
         os.makedirs(args.out, exist_ok=True)
         with zipfile.ZipFile(io.BytesIO(body)) as zf:
             names = safe_members(zf)
@@ -230,9 +248,10 @@ def main() -> None:
         out = args.out or os.path.join(".ss-artifacts", "release-" + tag)
         os.makedirs(out, exist_ok=True)
         for a in picked:
+            safe_asset_name(a["name"])
             body = download("/repos/%s/releases/assets/%d" % (repo_slug(), a["id"]), tok,
                             accept="application/octet-stream")
-            check_digest(body, a.get("digest", ""), a["name"])
+            check_digest(body, a.get("digest", ""), a["name"], strict=True)
             target = os.path.join(out, a["name"])
             with open(target, "wb") as fh:
                 fh.write(body)
@@ -252,7 +271,7 @@ def main() -> None:
         expected = found[0].get("digest", "")
     if not expected:
         sys.exit("需要 --digest sha256:<hex> 或 --release <tag>（且资产带 digest 字段）")
-    check_digest(data, expected, args.file)
+    check_digest(data, expected, args.file, strict=True)
 
 
 if __name__ == "__main__":
