@@ -282,6 +282,23 @@ class SyncTestCase(unittest.TestCase):
         finally:
             shutil.rmtree(root, ignore_errors=True)
 
+    def test_norm_rel_trims_surrounding_whitespace(self):
+        """C3-1：整串首尾 trim 先于去 ./ 与前导 /；盘符 OS 分支见 C6-2。"""
+        from selfshare.util import norm_rel, abs_path
+        self.assertEqual(norm_rel("  a/b.txt  "), "a/b.txt")
+        self.assertEqual(norm_rel("  .\\a\\./b//c/  "), "a/b/c")
+        self.assertEqual(norm_rel("   "), "")
+        root = tempfile.mkdtemp(prefix="selfshare-trim-")
+        try:
+            with self.assertRaises(ValueError):
+                abs_path(root, "   ")
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+        with self.assertRaises(ValueError):
+            norm_rel("  ../escape  ")
+        self.assertEqual(norm_rel("a\\b\\c.txt"), "a/b/c.txt")
+        self.assertEqual(norm_rel("  a/b\\c.txt  "), norm_rel("a/b/c.txt"))
+
     def test_three_hosts_converge(self):
         c = tempfile.mkdtemp(prefix="selfshare-hostC-")
         try:

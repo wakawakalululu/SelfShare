@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -346,9 +347,10 @@ func TestNormRelAndAbsPathContainment(t *testing.T) {
 		t.Fatalf("AbsPath: %q %v", got, err)
 	}
 
-	// 表驱动补充：盘符 / 绝对路径 / .. 逃逸 / 正常相对路径。
-	// 期望值按 AbsPath 的契约构造（NormRel → filepath.Join），
-	// 并显式核对结果仍在 root 内，防止 containment 回归。
+	// 表驱动：仅留与宿主 OS 无关的 .. / 普通相对路径 / 段折叠，逐字不变。
+	// 盘符语义按 C6-2 冻结、按宿主 OS 分支（见下方 driveCases）：
+	// docs/contracts/security-contract.md C6-2、docs/contracts/storage-layout.md §3、
+	// docs/decisions/OPEN-DECISIONS.md O-6。D2 冻结，不改 util.go 等生产代码。
 	cleanRoot := filepath.Clean(root) + string(os.PathSeparator)
 	cases := []struct {
 		name     string
@@ -356,9 +358,6 @@ func TestNormRelAndAbsPathContainment(t *testing.T) {
 		wantNorm string // NormRel 的期望输出；wantErr 时为 ""
 		wantErr  bool
 	}{
-		{"windows drive letter is a plain relative segment", "C:/Windows/x.txt", "C:/Windows/x.txt", false},
-		{"windows-style absolute path is normalised", "C:\\Windows\\x.txt", "C:/Windows/x.txt", false},
-		{"posix absolute path is normalised", "/etc/passwd", "etc/passwd", false},
 		{"parent traversal is rejected", "blobs/../../etc/passwd", "", true},
 		{"bare dotdot is rejected", "..", "", true},
 		{"nested dotdot is rejected", "a/../b/../../c", "", true},
@@ -393,5 +392,57 @@ func TestNormRelAndAbsPathContainment(t *testing.T) {
 				t.Fatalf("AbsPath(%q) escaped root: %q", tc.rel, out)
 			}
 		})
+	}
+	// 盘符 / 绝对路径：POSIX 保持既有期望（C:/... 普通段、/etc/passwd → etc/passwd、
+	// 结果不逃出 root）；Windows 因 filepath.Join 对卷名处理不同，仅作容错断言，
+	// 不固化 wantNorm 精确值。C6-2 冻结、按宿主 OS 分支，见上方契约指向。
+	driveCases := []struct{ name, rel, wantNorm string }{
+		{"windows drive letter is a plain relative segment", "C:/Windows/x.txt", "C:/Windows/x.txt"},
+		{"windows-style absolute path is normalised", "C:\\Windows\\x.txt", "C:/Windows/x.txt"},
+		{"posix absolute path is normalised", "/etc/passwd", "etc/passwd"},
+	}
+	for _, tc := range driveCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			posix := runtime.GOOS != "windows"
+			if posix {
+				norm, err := NormRel(tc.rel)
+				if err != nil || norm != tc.wantNorm {
+					t.Fatalf("NormRel(%q)=%q,%v; want %q", tc.rel, norm, err, tc.wantNorm)
+				}
+			}
+			out, err := AbsPath(root, tc.rel)
+			if !posix { // 容错：被 AbsPath 拒绝，或结果仍在 root 内
+				if err == nil && !strings.HasPrefix(filepath.Clean(out)+string(os.PathSeparator), cleanRoot) {
+					t.Fatalf("AbsPath(%q) escaped root: %q", tc.rel, out)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("AbsPath(%q) must stay inside root: %v", tc.rel, err)
+			}
+			want := filepath.Join(root, filepath.FromSlash(tc.wantNorm))
+			if filepath.Clean(out) != filepath.Clean(want) || !strings.HasPrefix(filepath.Clean(out)+string(os.PathSeparator), cleanRoot) {
+				t.Fatalf("AbsPath(%q)=%q, want %q in %q", tc.rel, out, want, cleanRoot)
+			}
+		})
+	}
+}
+
+// C3-1 trim 契约（Go 实现 util.go:16，docs/contracts/storage-layout.md C3-1）：
+// 整串首尾空白在去 ./ 与去前导 / 之前 trim；纯字符串 root，不写文件、不联网。
+func TestNormRelTrimContract(t *testing.T) {
+	root := filepath.Join("data", "vault")
+	if got, err := NormRel("  a/b.txt  "); err != nil || got != "a/b.txt" {
+		t.Fatalf("NormRel trim: %q,%v", got, err)
+	}
+	if got, err := NormRel("   "); err != nil || got != "" {
+		t.Fatalf("NormRel all-whitespace: %q,%v", got, err)
+	}
+	if _, err := AbsPath(root, "   "); err == nil {
+		t.Fatal("AbsPath must reject empty relative path")
+	}
+	if got, err := NormRel("  ../escape  "); got != "" || err == nil {
+		t.Fatalf("trimmed '..' must error: %q,%v", got, err)
 	}
 }
