@@ -26,7 +26,9 @@
 
 - `selfshare-dev-team` D 轨道契约先行（`LOOP-20261109-05`）：新建 `docs/contracts/storage-layout.md` C3（rel 键规范化，三端 trim 收敛）、更新 `security-contract.md` C6-2（盘符 containment 按宿主 OS 分支冻结）、登记 `OPEN-DECISIONS.md` O-6（v2 变更记录）；Rust `norm_rel` 补 trim 并同步 `state.rs::base_of` 归一，Python / Rust / Go 三端各补 trim 与 OS 分支断言。**D2 盘符语义冻结**，不改 Python / Go 生产代码、`ServiceVersion` 与 C5 形状。
 
-测试口径：Python 32 例（sync 21 / p2p 6 / pairing 5）+ 可选 DLL 冒烟 9 例、Rust 内核 25 例（历史 18 例）、Go 23 例（历史 20 例）、Tauri `engine_state` 测试。
+- **D6 / C4-1 修复（`LOOP-20261109-07`）**：新建 `docs/contracts/merge-semantics.md` C4 契约、登记 `OPEN-DECISIONS.md` O-7（已发布行为变更）；Python `store.py` 与 Go `vault.go` 的 `del` 统一为与 `put` 相同的 `base == current` 判据，缺 `base_hash` 且远端有内容时记 `remote_changed` 并跳过，防止畸形/旧客户端静默删除第三方新编辑。正常客户端恒带 base，删除流程不受影响；新增 Python / Go 注入用例（`test_delete_without_base_never_overwrites_new_remote_edit` / `TestCommitDelWithoutBaseRejectsRemoteEdit`），L4 用**新编译** Go 二进制实证。
+
+测试口径：Python 33 例（sync 22 / p2p 6 / pairing 5）+ 可选 DLL 冒烟 9 例、Rust 内核 25 例（历史 18 例）、Go 24 例（历史 20 例）、Tauri `engine_state` 测试。
 
 ---
 
