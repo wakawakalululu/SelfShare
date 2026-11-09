@@ -7,7 +7,8 @@
     SELFSHARE_CORE_DLL=/path/to/selfshare_core.dll python tests/test_core_dll.py -v
 
 只做无副作用的 ABI 冒烟（版本 / 初始化 / 关停 / 只读状态 / 不可达探测 /
-挂载根查找无匹配文案），共 7 例，不做挂载同步；
+挂载根查找无匹配文案 / Dart·Rust·Python 冻结文案静态一致性 /
+A 类 ok_json 形状表驱动断言），共 9 例，不做挂载同步；
 行为级验证由 Rust 侧 `cargo test`（CI L2）与桌面端覆盖。
 """
 
@@ -16,11 +17,18 @@ from __future__ import annotations
 import ctypes
 import json
 import os
+import re
 import tempfile
 import unittest
 import uuid
+from pathlib import Path
 
 DLL_PATH = os.environ.get("SELFSHARE_CORE_DLL")
+
+# 仓库根由 __file__ 反推，静态读取不依赖 cwd（与 DLL_PATH 绝对路径同理）。
+REPO_ROOT = Path(__file__).resolve().parents[1]
+# C5-3 冻结文案：Dart 白名单 / ffi.rs::ss_find_mount 无匹配 err_json / 本模块三处逐字一致。
+NO_MATCH_ERROR = "不在任何同步目录内"
 
 # 与 desktop/core/include/selfshare_core.h 的 19 个导出一一对应；新增 ABI 时同步两处。
 ABI_SYMBOLS = (
@@ -113,7 +121,7 @@ class CoreDllTestCase(unittest.TestCase):
         # _findMountNoMatchError 与 ffi.rs:330 的 err_json 文案必须逐字一致；
         # tryFindMount() 仅当 error 等于本常量时把「无匹配」折叠为 null。
         # 文案一旦变更，此用例须与 Dart 白名单、ffi.rs 三处同步。
-        no_match_error = "不在任何同步目录内"
+        no_match_error = NO_MATCH_ERROR
         # util.rs:289-298：find_mount_root 从 start 逐级 parent 检查
         # <dir>/.selfshare/config.json 是否存在。纯字符串构造 tempdir 下
         # 「唯一子目录 + 文件名」，路径无需真实存在：.exists() 探测每级都
@@ -130,6 +138,39 @@ class CoreDllTestCase(unittest.TestCase):
             no_match_error,
             "ss_find_mount 无匹配文案必须与 rust_bridge.dart 白名单逐字一致",
         )
+
+    def test_no_match_error_whitelist_is_consistent(self):
+        # D4：Dart 白名单 / ffi.rs 无匹配 err_json / NO_MATCH_ERROR 三处逐字一致
+        dart = (REPO_ROOT / "desktop/app/lib/rust_bridge.dart").read_text("utf-8")
+        rust = (REPO_ROOT / "desktop/core/src/ffi.rs").read_text("utf-8")
+        dm = re.search(r"""_findMountNoMatchError\s*=\s*['"]([^'"]*)['"]""", dart)
+        fm = re.search(r"fn\s+ss_find_mount\b(?P<b>.*?)\n\}", rust, re.S)
+        self.assertIsNotNone(dm, "漂移：rust_bridge.dart 缺 _findMountNoMatchError")
+        self.assertIsNotNone(fm, "漂移：ffi.rs 缺 ss_find_mount 函数体")
+        rm = re.search(r"""None\s*=>\s*err_json\(\s*"([^"]*)"\s*\)""", fm.group("b"))
+        self.assertIsNotNone(rm, "漂移：ffi.rs::ss_find_mount 缺无匹配分支 err_json")
+        self.assertEqual(dm.group(1), NO_MATCH_ERROR,
+                         "漂移位置 rust_bridge.dart=%r" % dm.group(1))
+        self.assertEqual(rm.group(1), NO_MATCH_ERROR,
+                         "漂移位置 ffi.rs 无匹配 err_json=%r" % rm.group(1))
+
+    def test_a_class_abis_keep_ok_json_shape(self):
+        # D5：C5-2 A 类形状；不存在的目录使各端点提前 err_json，无副作用
+        missing = os.path.join(tempfile.gettempdir(),
+                               "selfshare-missing-" + uuid.uuid4().hex)
+        self.assertFalse(os.path.exists(missing), "探针目录应确定不存在")
+        for name in ("ss_mount_info", "ss_plan", "ss_remote_stat",
+                     "ss_find_mount", "ss_unmount"):  # 均单路径字符串入参 A 类
+            with self.subTest(abi=name):
+                p = self._str_call(name, missing)
+                self.assertIsInstance(p, dict, "%s 须为 JSON 对象" % name)
+                self.assertIn("ok", p, "%s 顶层恒有 ok（禁裸 JSON/{error} 无 ok）" % name)
+                self.assertIsInstance(p["ok"], bool, "%s 的 ok 须为布尔" % name)
+                if p["ok"] is False:
+                    self.assertIn("error", p, "%s ok:false 须带 error" % name)
+                    self.assertIsInstance(p["error"], str, "%s 的 error 须为字符串" % name)
+                else:
+                    self.assertIn("data", p, "%s ok:true 须带 data" % name)
 
 
 if __name__ == "__main__":
