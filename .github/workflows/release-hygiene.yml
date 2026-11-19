@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   mark:
-    name: v1.1.0 → prerelease, v2.0.0 → latest
+    name: v1.1.0 → prerelease, stable → latest
     runs-on: ubuntu-latest
     steps:
       - name: Flip drill release v1.1.0 to prerelease
@@ -33,17 +33,23 @@ jobs:
         run: |
           gh release edit v1.1.0 --prerelease --repo "$GITHUB_REPOSITORY"
 
-      - name: Pin stable v2.0.0 as latest and assert
+      - name: Pin stable v2.0.1 as latest and assert
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release edit v2.0.0 --latest --repo "$GITHUB_REPOSITORY"
+          # v2.0.1 尚未发布时跳过（发布前的过渡期），发布后则强制断言。
+          if ! gh release view v2.0.1 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "v2.0.1 not published yet; skipping pin (no failure)"
+            exit 0
+          fi
+          gh release edit v2.0.1 --latest --repo "$GITHUB_REPOSITORY"
           # gh release view 的 JSON 字段无 isLatest（runner gh 版本差异），
           # 改用 REST /releases/latest 断言，口径与 get_latest_release 一致。
           latest="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name')"
           echo "latest=$latest"
-          if [ "$latest" != "v2.0.0" ]; then
-            echo "::error::latest release is $latest, expected v2.0.0"
+          # 期望值随补丁版推进：v2.0.0 → v2.0.1（LOOP-20261120-02）
+          if [ "$latest" != "v2.0.1" ]; then
+            echo "::error::latest release is $latest, expected v2.0.1"
             exit 1
           fi
 

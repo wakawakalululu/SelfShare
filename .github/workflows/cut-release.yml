@@ -1,0 +1,71 @@
+# 打发行 tag：在当前 master HEAD 创建 annotated tag 并推送。
+#
+# 说明：GITHUB_TOKEN 的 push 不会触发其他工作流（GitHub 平台限制），
+# 因此本工作流只负责「把 tag 打上」；随后用 workflow_dispatch 触发
+# release.yml（输入 tag）完成构建与发布：
+#   gh workflow run release.yml -f tag=v2.0.1
+#
+# 用法：Actions → Cut release tag → Run workflow → 输入 tag（如 v2.0.1）。
+
+name: Cut release tag
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to create at HEAD, e.g. v2.0.1'
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cut-release-${{ github.event.inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  cut:
+    name: tag ${{ github.event.inputs.tag }} at HEAD
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate tag
+        shell: bash
+        env:
+          REQUESTED_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          set -euo pipefail
+          TAG="$REQUESTED_TAG"
+          case "$TAG" in
+            v[0-9]*.[0-9]*.[0-9]*) echo "tag ok: $TAG" ;;
+            *) echo "::error::tag must look like vX.Y.Z, got: $TAG"; exit 1 ;;
+          esac
+          if git rev-parse --verify --quiet "refs/tags/$TAG" >/dev/null; then
+            echo "::error::tag '$TAG' already exists"
+            exit 1
+          fi
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+
+      - name: Create and push annotated tag
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "SelfShare $TAG (cut from $(git rev-parse --short HEAD))"
+          git push origin "refs/tags/$TAG"
+
+      - name: Confirm tag on remote
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git fetch --tags --force origin
+          oid="$(git rev-parse --verify "refs/tags/$TAG^{commit}")"
+          echo "remote tag '$TAG' -> $oid"

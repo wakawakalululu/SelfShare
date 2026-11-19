@@ -22,7 +22,7 @@ import (
 )
 
 // 发行版本；注意与 HTTP 层的 ServiceVersion（协议版本）区分。
-const serverVersion = "2.0.0"
+const serverVersion = "2.0.1"
 
 // banner 首行与 Python 服务端逐字一致，方便部署脚本按同一标记判定就绪。
 const banner = `SelfShare server listening on %s
@@ -32,12 +32,12 @@ const banner = `SelfShare server listening on %s
 
 func main() {
 	var (
-		root  = flag.String("root", "selfshare-data", "数据根目录")
-		host  = flag.String("host", "0.0.0.0", "监听地址")
-		port  = flag.Int("port", 8484, "监听端口，0 表示随机")
-		cert  = flag.String("cert", "", "TLS 证书路径")
-		key   = flag.String("key", "", "TLS 私钥路径")
-		quiet = flag.Bool("quiet", false, "不打印访问日志与配对码")
+		root        = flag.String("root", "selfshare-data", "数据根目录")
+		host        = flag.String("host", "0.0.0.0", "监听地址")
+		port        = flag.Int("port", 8484, "监听端口，0 表示随机")
+		cert        = flag.String("cert", "", "TLS 证书路径")
+		key         = flag.String("key", "", "TLS 私钥路径")
+		quiet       = flag.Bool("quiet", false, "不打印访问日志与配对码")
 		showVersion = flag.Bool("version", false, "打印版本号并退出")
 	)
 	flag.Parse()
@@ -81,7 +81,7 @@ func run(root, host string, port int, cert, key string, quiet bool) error {
 	fmt.Println("  press Ctrl+C to stop")
 
 	httpSrv := &http.Server{
-		Handler: srv,
+		Handler:           srv,
 		// 大文件上传可能很慢，只给读头设超时
 		ReadHeaderTimeout: 30 * time.Second,
 		IdleTimeout:       120 * time.Second,
