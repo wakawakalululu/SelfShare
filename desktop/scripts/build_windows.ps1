@@ -30,7 +30,7 @@ if ($SkipFlutter) {
 }
 
 if (-not (Get-Command flutter -ErrorAction SilentlyContinue)) {
-  # 常见安装位置兜底
+  # 常见安装位置兑底
   foreach ($candidate in @('C:\dev\flutter\bin', "$env:LOCALAPPDATA\flutter\bin", 'C:\flutter\bin')) {
     if (Test-Path (Join-Path $candidate 'flutter.bat')) {
       $env:PATH = "$candidate;$env:PATH"
@@ -75,7 +75,7 @@ Push-Location $App
 try {
   flutter pub get
   if ($LASTEXITCODE -ne 0) { throw 'flutter pub get failed' }
-  flutter analyze
+  flutter analyze --no-fatal-infos
   if ($LASTEXITCODE -ne 0) { throw 'flutter analyze failed' }
 
   Write-Host '[3/4] flutter build windows' -ForegroundColor Cyan

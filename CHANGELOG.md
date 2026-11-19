@@ -16,7 +16,7 @@
 
 - 根 `ci.yml` 新增 `v2-client`（vite 构建 + `cargo check --all-targets` + `engine_state` 测试）与 `core-dll-smoke`（下载 Rust 产物跑 6 例 DLL 冒烟）；`v2-server` 的 vet / race / Docker 冒烟收敛至 `ci-v2.yml` 权威覆盖，不再三处重复。
 - `ci-v2.yml` 触发器补 `tags: ['v*']`：发行标签上必跑 compat 跨实现套件。
-- `release.yml`：Release notes 只认 CHANGELOG 一级版本标题（伪 tag 显式失败，不再兜底整份文件）；`contents: write` 收窄至发布 job；`npm ci` 替代 `npm install`；发布资产 glob 互斥（8 个资产）；行尾统一 LF。
+- `release.yml`：Release notes 只认 CHANGELOG 一级版本标题（伪 tag 显式失败，不再兑底整份文件）；`contents: write` 收窄至发布 job；`npm ci` 替代 `npm install`；发布资产 glob 互斥（8 个资产）；行尾统一 LF。
 - 新增「远程构建 ↔ 本地验证」循环：`desktop/scripts/ci_fetch.py`（Actions 产物 / Release 资产下载 + SHA256 校验，无 `gh` CLI 可用）与 `tests/test_core_dll.py`（Rust 内核 DLL ctypes 冒烟 6 例，`SELFSHARE_CORE_DLL` 门控）；用法见 CONTRIBUTING「远程构建 ↔ 本地验证循环」。
 - `Dockerfile` 改为 `--platform=$BUILDPLATFORM` + `TARGETOS/TARGETARCH` 交叉编译，避免多架构构建走 QEMU。
 - 新增 `v2/scripts/check.sh` 本地轻量检查；`build-test-deploy.yml` 补齐服务端镜像发布与可选滚动部署。
@@ -29,10 +29,35 @@
 - **D6 / C4-1 修复（`LOOP-20261109-07`）**：新建 `docs/contracts/merge-semantics.md` C4 契约、登记 `OPEN-DECISIONS.md` O-7（已发布行为变更）；Python `store.py` 与 Go `vault.go` 的 `del` 统一为与 `put` 相同的 `base == current` 判据，缺 `base_hash` 且远端有内容时记 `remote_changed` 并跳过，防止畸形/旧客户端静默删除第三方新编辑。正常客户端恒带 base，删除流程不受影响；新增 Python / Go 注入用例（`test_delete_without_base_never_overwrites_new_remote_edit` / `TestCommitDelWithoutBaseRejectsRemoteEdit`），L4 用**新编译** Go 二进制实证。
 
 - 文档口径收敛（`LOOP-20261109-08`）：`PROJECT_STATUS.md` §0 成为「当前状态 + 后续路线」的**唯一权威入口**，§1 起明确标为 2026-11-04 历史快照；`AGENTS.md` §6 移除多轮 run 演进史、改为指向该入口；`v2/RELEASE_SUMMARY.md` 的过时「当前状态（2026-11-08）」行改为历史快照声明。不新增文件、不改代码与契约条款。
+- `flutter analyze` 门禁加 `--no-fatal-infos`（`ci.yml` Analyze 步与 `desktop/scripts/build_windows.ps1` 第 2/4 步）：Flutter stable 3.50.0 将 `package:flutter/material.dart` 导入标记为 deprecated info，info 级别不再拦截 CI / 发版（error 与 warning 仍拦截）；LOOP-20261120-02 实证 run `44611255635` 与 `44611482618` 因该环境漂移失败，`ci.yml` 顺带全文件行尾统一为 LF（原 CRLF 曾导致 sed 修改失败）。
 
-- Release 去旧留新（`LOOP-20261120-01`）：新增 `.github/workflows/release-hygiene.yml`（`workflow_dispatch` + 本文件 push 触发，幂等可逆），`gh release edit` 将演练发布 `v1.1.0` 转 prerelease、`v2.0.0` 固定 `--latest`，`get_latest_release` 口径回归稳定版；README 下载说明同步校正。仅改 release 元数据，不删除任何资产。
+- Release 去旧留新（`LOOP-20261120-01`）：新增 `.github/workflows/release-hygiene.yml`（`workflow_dispatch` + 本文件 push 触发，幂等可逆），`gh release edit` 将演练发布 `v1.1.0` 转 prerelease、稳定版固定 `--latest`，`get_latest_release` 口径回归稳定版；README 下载说明同步校正。仅改 release 元数据，不删除任何资产。
 
 测试口径：Python 33 例（sync 22 / p2p 6 / pairing 5）+ 可选 DLL 冒烟 9 例、Rust 内核 25 例（历史 18 例）、Go 24 例（历史 20 例）、Tauri `engine_state` 测试。
+
+---
+
+# [v2.0.1] — 2026-11-20
+
+发布日期：2026-11-20
+发布范围：Go 服务端补丁版——把 2026-11-09 合入 master 的 **C4-1 / O-7 删除安全修复**随版发布为 5 平台二进制；Tauri Windows 安装包仅同步版本号（2.0.0 → 2.0.1，无客户端行为变更）；Windows 便携包与服务端源码包按既定 release 流程重打。
+协议兼容：HTTP `ServiceVersion` 保持 `1.0`，磁盘数据格式（`server.json` / `vault.db` / `blobs/`）不变，v1 / v2 客户端与既有数据目录可直接沿用。
+
+## 服务端（Go）
+
+- **C4-1 / O-7 随版发布**：`del` 统一为与 `put` 相同的 `base == current` 判据，缺 `base_hash` 且远端有内容时记 `remote_changed` 并跳过，畸形 / 旧客户端不再静默删除第三方新编辑（`TestCommitDelWithoutBaseRejectsRemoteEdit`）。该修复 2026-11-09 合入 master（`1c4a5fd`），v2.0.0 二进制（tag `1c8559c`，2026-11-04）未包含；LOOP-20261120-01 回归实测：v2.0.0 二进制 49/50，master CI 产物 50/50，本版以此收敛。
+
+## 验证
+
+| 项目 | 结果 |
+| --- | --- |
+| GitHub Actions `ci-v2.yml`（Go race / vet、5 平台构建、Python 兼容、Docker 冒烟、Tauri 构建） | 9/9 全绿 |
+| Python 50 例回归（`SELFSHARE_SERVER_BIN` 对接本版 linux/amd64 二进制） | 50/50（含 C4-1 回归用例） |
+| `release.yml` 发布前资产校验（2 zip + 5 二进制 + 1 NSIS，非空 + 集合互斥 + linux 二进制 `--version` 冒烟） | 流水线内建 |
+
+## 升级说明
+
+停止旧服务端 → 替换为本版二进制（或镜像）→ 用原 `--root` 数据目录启动；无需迁移，可随时回滚到 v2.0.0（数据格式相同）。
 
 ---
 

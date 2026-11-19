@@ -195,7 +195,7 @@ jobs:
 
       - name: Analyze
         working-directory: desktop/app
-        run: flutter analyze
+        run: flutter analyze --no-fatal-infos
 
       - name: Build Windows release
         working-directory: desktop/app
