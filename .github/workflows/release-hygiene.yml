@@ -1,0 +1,47 @@
+# Release 去旧留新：演练发布转 prerelease，稳定版固定为 latest。
+#
+# 背景：演练发布 v1.1.0（8 资产）发布时间晚于稳定版 v2.0.0，GitHub 的
+# 「latest」按发布时间取值，导致 latest 口径漂移。本工作流幂等且可逆
+# （只改 release 元数据，不删除任何资产），可重复执行。
+#
+# 触发：workflow_dispatch；以及本文件变更 push（首次落地即自动执行一次）。
+
+name: Release hygiene
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/release-hygiene.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-hygiene
+  cancel-in-progress: false
+
+jobs:
+  mark:
+    name: v1.1.0 → prerelease, v2.0.0 → latest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Flip drill release v1.1.0 to prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release edit v1.1.0 --prerelease --repo "$GITHUB_REPOSITORY"
+
+      - name: Pin stable v2.0.0 as latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release edit v2.0.0 --latest --repo "$GITHUB_REPOSITORY"
+          gh release view v2.0.0 --repo "$GITHUB_REPOSITORY" --json tagName,isLatest
+
+      - name: Show release overview
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release list --repo "$GITHUB_REPOSITORY"

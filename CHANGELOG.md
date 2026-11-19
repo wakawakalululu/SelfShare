@@ -30,6 +30,8 @@
 
 - 文档口径收敛（`LOOP-20261109-08`）：`PROJECT_STATUS.md` §0 成为「当前状态 + 后续路线」的**唯一权威入口**，§1 起明确标为 2026-11-04 历史快照；`AGENTS.md` §6 移除多轮 run 演进史、改为指向该入口；`v2/RELEASE_SUMMARY.md` 的过时「当前状态（2026-11-08）」行改为历史快照声明。不新增文件、不改代码与契约条款。
 
+- Release 去旧留新（`LOOP-20261120-01`）：新增 `.github/workflows/release-hygiene.yml`（`workflow_dispatch` + 本文件 push 触发，幂等可逆），`gh release edit` 将演练发布 `v1.1.0` 转 prerelease、`v2.0.0` 固定 `--latest`，`get_latest_release` 口径回归稳定版；README 下载说明同步校正。仅改 release 元数据，不删除任何资产。
+
 测试口径：Python 33 例（sync 22 / p2p 6 / pairing 5）+ 可选 DLL 冒烟 9 例、Rust 内核 25 例（历史 18 例）、Go 24 例（历史 20 例）、Tauri `engine_state` 测试。
 
 ---
@@ -80,7 +82,7 @@
 
 ### 工程收尾
 
-- `CHANGELOG.md` 版本锚点改为 `[v2.0.0]`，`release.yml` 的 notes 提取兼容方括号标题，避免回退整份文件。
+- `CHANGELOG.md` 版本锚点改为 `[v2.0.0]`，`release.yml` 的 notes 提取兼容方括号标题，避免回退整份 CHANGELOG。
 - 清理 `v2/superseded/` 早期缺陷实现；统一 CI / Pages 触发分支为 `master`；移除根 `ci.yml` 主流程软失败。
 
 ---

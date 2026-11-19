@@ -102,7 +102,7 @@ docker run -d --name selfshare -p 8484:8484 -v selfshare-data:/data selfshare-se
 
 [稳定版 v2.0.0](https://github.com/wakawakalululu/SelfShare/releases/tag/v2.0.0) 里有 Windows 便携包（解压即用）和服务端压缩包。
 
-> latest 当前为演练发布 `v1.1.0`（8 资产），按用户决定保留；稳定版请指定 `v2.0.0`（7 资产）。
+> latest 已回归稳定版 `v2.0.0`（7 资产）；演练发布 `v1.1.0`（8 资产）转为 prerelease 存档（资产保留，按 tag 指定）。
 
 ## 限制
 
