@@ -291,6 +291,38 @@ async fn sync_once_with_p2p_enabled_keeps_failure_shape() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// syncing 互斥契约：监控停止后，手动 `sync_once` 不受互斥检查误伤
+/// （watcher 停止会 join 线程并复位 syncing 标志）——返回
+/// `Ok(SyncStatus{state:"error"})`（不可达服务端）而非「正在同步中」的 Err。
+#[tokio::test]
+async fn sync_once_not_blocked_by_mutex_after_watch_stopped() {
+    let dir = temp_dir("p2p-mutex-after-stop");
+    std::fs::create_dir_all(dir.join("folder")).expect("创建临时文件夹失败");
+    let engine = SyncEngine::new(dir.clone());
+    engine
+        .add_mount(MountConfig {
+            name: "m".to_string(),
+            local_path: dir.join("folder").to_string_lossy().to_string(),
+            server_url: "http://127.0.0.1:1".to_string(),
+            vault_id: "v".to_string(),
+            token: "t".to_string(),
+        })
+        .await
+        .expect("挂载失败");
+
+    // 启动又停止监控：确认 syncing 标志复位（stop 会 join 线程）。
+    engine.start_watch("m").await.expect("启动监控失败");
+    engine.stop_watch("m").await.expect("停止监控失败");
+
+    let status = engine
+        .sync_once("m")
+        .await
+        .expect("监控停止后 sync_once 不应被互斥拒绝");
+    assert_eq!(status.state, "error");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// R11 余量 / P2P 可观测性契约：`p2p_status` 只读快照在「开关关闭 + 监控未启动 +
 /// 中心不可达」的最简环境下必须形状完整且不误导——enabled=false、watching=false、
 /// node=None（未启 P2P 绝不虚报节点）、peers 为空（中心不可达静默容错，不把

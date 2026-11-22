@@ -14,7 +14,7 @@ use serde::Serialize;
 
 use crate::engine::{SyncReport, Syncer};
 use crate::state::LocalState;
-use crate::util::scan_dir;
+use crate::util::scan_dir_strict;
 
 /// 本机 P2P 节点快照：watcher 线程在 `PeerServer::start` 成功后写入，
 /// 供 GUI 侧只读查询（节点 id 与监听地址）。
@@ -28,6 +28,9 @@ pub struct WatchHandle {
     stop: Arc<AtomicBool>,
     join: Option<JoinHandle<()>>,
     peer_node: Arc<Mutex<Option<PeerNodeInfo>>>,
+    /// watcher 正在执行同步（run_once）——供引擎侧手动同步互斥，避免
+    /// 手动同步与后台巡检对同一 mount 并发双跑（state.json 丢更新）。
+    syncing: Arc<AtomicBool>,
 }
 
 impl WatchHandle {
@@ -46,6 +49,11 @@ impl WatchHandle {
     pub fn peer_node(&self) -> Option<PeerNodeInfo> {
         self.peer_node.lock().ok().and_then(|g| g.clone())
     }
+
+    /// 后台巡检同步是否进行中（手动同步据此互斥）。
+    pub fn is_syncing(&self) -> bool {
+        self.syncing.load(Ordering::SeqCst)
+    }
 }
 
 impl Drop for WatchHandle {
@@ -56,11 +64,11 @@ impl Drop for WatchHandle {
 
 type Snapshot = BTreeMap<String, (u64, f64)>;
 
-fn take_snapshot(folder: &PathBuf, patterns: &[String]) -> Snapshot {
-    match scan_dir(folder, patterns) {
-        Ok(items) => items.into_iter().map(|(p, s, m)| (p, (s, m))).collect(),
-        Err(_) => Snapshot::new(),
-    }
+/// 严格扫描快照：扫描失败（瞬时不可读）时返回 Err——调用方按「本轮无变化」
+/// 跳过，绝不把不可读子树当成删除触发同步（数据安全，LOOP-20261123-06）。
+fn take_snapshot(folder: &PathBuf, patterns: &[String]) -> Result<Snapshot, String> {
+    scan_dir_strict(folder, patterns)
+        .map(|items| items.into_iter().map(|(p, s, m)| (p, (s, m))).collect())
 }
 
 /// 启动监视线程。
@@ -82,6 +90,8 @@ where
     let debounce = Duration::from_secs(debounce_secs);
     let peer_node_slot: Arc<Mutex<Option<PeerNodeInfo>>> = Arc::new(Mutex::new(None));
     let slot_in_thread = Arc::clone(&peer_node_slot);
+    let syncing_slot = Arc::new(AtomicBool::new(false));
+    let syncing_in_thread = Arc::clone(&syncing_slot);
 
     let join = std::thread::Builder::new()
         .name("selfshare-watch".into())
@@ -123,15 +133,29 @@ where
 
             // 启动即做一次同步，让界面立刻收敛；完成后清除待处理标记，
             // 否则 debounce 到期会无故再跑一次。
+            syncing_in_thread.store(true, Ordering::SeqCst);
             run_once(&folder, peer_id.as_deref(), &mut on_message, &mut on_report);
-            last = take_snapshot(&folder, &patterns);
+            syncing_in_thread.store(false, Ordering::SeqCst);
+            last = match take_snapshot(&folder, &patterns) {
+                Ok(snap) => snap,
+                Err(e) => {
+                    on_message(&format!("本地目录扫描失败，本轮跳过：{}", e), 0, 0);
+                    Snapshot::new()
+                }
+            };
 
             while !stop_flag.load(Ordering::SeqCst) {
                 std::thread::sleep(interval);
                 if stop_flag.load(Ordering::SeqCst) {
                     break;
                 }
-                let current = take_snapshot(&folder, &patterns);
+                let current = match take_snapshot(&folder, &patterns) {
+                    Ok(snap) => snap,
+                    Err(e) => {
+                        on_message(&format!("本地目录扫描失败，本轮按无变化跳过：{}", e), 0, 0);
+                        continue;
+                    }
+                };
                 if current != last {
                     last = current;
                     pending_since = Some(Instant::now());
@@ -142,12 +166,16 @@ where
                     .unwrap_or(false);
                 if should_sync {
                     pending_since = None;
+                    syncing_in_thread.store(true, Ordering::SeqCst);
                     run_once(&folder, peer_id.as_deref(), &mut on_message, &mut on_report);
+                    syncing_in_thread.store(false, Ordering::SeqCst);
                     last = take_snapshot(&folder, &patterns);
                     last_full = Instant::now();
                 } else if last_full.elapsed() >= Duration::from_secs(120) {
                     // 无本地变更时也定期巡检，拉取其他主机的更新
+                    syncing_in_thread.store(true, Ordering::SeqCst);
                     run_once(&folder, peer_id.as_deref(), &mut on_message, &mut on_report);
+                    syncing_in_thread.store(false, Ordering::SeqCst);
                     last = take_snapshot(&folder, &patterns);
                     last_full = Instant::now();
                 }
@@ -158,7 +186,7 @@ where
         })
         .expect("无法创建监视线程");
 
-    WatchHandle { stop, join: Some(join), peer_node: peer_node_slot }
+    WatchHandle { stop, join: Some(join), peer_node: peer_node_slot, syncing: syncing_slot }
 }
 
 fn run_once<M, R>(

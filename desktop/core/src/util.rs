@@ -264,13 +264,46 @@ fn glob_match(pattern: &str, text: &str) -> bool {
 }
 
 /// 递归列出目录下的所有文件，返回 `(相对路径, 大小, mtime)`。
+/// 严格版扫描：任何 read_dir/metadata 失败都返回 Err。
+/// 同步规划必须用它——容错版会把瞬时不可读的子树从本地清单里静默丢掉，
+/// 同步引擎随后判「本地已删」→ DeleteRemote 误删远端并传播（数据安全，
+/// 多 agent 审计 LOOP-20261123-06 发现；watcher 的变更检测同样须用它，
+/// 扫描失败按「本轮无变化」跳过，绝不触发删除）。
+pub fn scan_dir_strict(root: &Path, patterns: &[String]) -> Result<Vec<(String, u64, f64)>, String> {
+    let mut errs: Vec<String> = Vec::new();
+    let out = scan_dir_impl(root, patterns, Some(&mut errs))?;
+    if errs.is_empty() {
+        Ok(out)
+    } else {
+        Err(format!(
+            "本地目录扫描不完整（{} 个条目不可读），已中止本次同步以避免误判删除；首个错误: {}",
+            errs.len(),
+            errs[0]
+        ))
+    }
+}
+
+/// 容错版扫描：忽略不可读条目（peer 文件列表等非数据安全场景使用）。
 pub fn scan_dir(root: &Path, patterns: &[String]) -> io::Result<Vec<(String, u64, f64)>> {
+    scan_dir_impl(root, patterns, None)
+}
+
+fn scan_dir_impl(
+    root: &Path,
+    patterns: &[String],
+    mut errs: Option<&mut Vec<String>>,
+) -> io::Result<Vec<(String, u64, f64)>> {
     let mut out = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
         let entries = match fs::read_dir(&dir) {
             Ok(e) => e,
-            Err(_) => continue,
+            Err(e) => {
+                if let Some(slot) = errs.as_deref_mut() {
+                    slot.push(format!("{}: {}", dir.display(), e));
+                }
+                continue;
+            }
         };
         for entry in entries.flatten() {
             let name = entry.file_name().to_string_lossy().to_string();
@@ -281,7 +314,12 @@ pub fn scan_dir(root: &Path, patterns: &[String]) -> io::Result<Vec<(String, u64
             };
             let meta = match entry.metadata() {
                 Ok(m) => m,
-                Err(_) => continue,
+                Err(e) => {
+                    if let Some(slot) = errs.as_deref_mut() {
+                        slot.push(format!("{}: {}", path.display(), e));
+                    }
+                    continue;
+                }
             };
             if meta.is_dir() {
                 if ALWAYS_IGNORED_DIRS.contains(&name.as_str()) {
@@ -332,6 +370,28 @@ pub fn validate_mount_name(name: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    // LOOP-20261123-06：不可读子目录此前被静默跳过 → 文件从本地清单消失 →
+    // 误判「本地已删」→ DeleteRemote 误删远端。严格版必须显式报错。
+    #[cfg(unix)]
+    #[test]
+    fn scan_dir_strict_reports_unreadable_subdir() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("ss-scan-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("ok.txt"), b"ok").unwrap();
+        let sub = dir.join("locked");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(sub.join("hidden.txt"), b"hidden").unwrap();
+        std::fs::set_permissions(&sub, std::fs::Permissions::from_mode(0o000));
+        let strict = scan_dir_strict(&dir, &[]);
+        std::fs::set_permissions(&sub, std::fs::Permissions::from_mode(0o755));
+        std::fs::remove_dir_all(&dir).ok();
+        assert!(strict.is_err(), "不可读子目录必须报错而非静默跳过");
+        // 容错版（peer 文件列表用）依旧可用：返回 Ok，不含 locked 内文件
+        let tolerant = scan_dir(&dir, &[]).unwrap_or_default();
+        assert!(!tolerant.iter().any(|(p, _, _)| p.starts_with("locked/")));
+    }
+
     // §5.4-4 回归：含令牌的落盘文件（config.json / registry.json 走 atomic_write）
     // 在 Unix 上必须 0600。Windows 走 ACL 无此语义，测试仅限 unix 编译。
     #[cfg(unix)]

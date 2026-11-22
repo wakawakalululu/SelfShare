@@ -3,7 +3,7 @@
 > **本文 §0 是当前状态与后续路线的唯一权威入口**；§1 起为 2026-11-04 基线（`42d6764`）的历史盘点快照，R1–R12 已全部闭环，**不再作为当前口径维护**。
 > 仓库：`wakawakalululu/SelfShare`；基线：`master` == `origin/master`（2026-11-22 刷新，见 §0.2）
 > 发布：稳定版 **`v2.1.2`**（8 资产，latest，Go/Rust 稳健性修复随版）；`v2.1.1`（config.json 0600 安全补丁）、`v2.1.0`（P2P 可观测性，首个 minor 功能版）、`v2.1.0`（P2P 可观测性，首个 minor 功能版）、`v2.0.4`（R5 P2P 数据面）、`v2.0.3`（O-2/O-3 UI）、`v2.0.2`（D7）、`v2.0.1` 补丁版存档；`v2.0.4`（R5 P2P 数据面）、`v2.0.3`（O-2/O-3 UI）、`v2.0.2`（D7）、`v2.0.1` 补丁版存档；演练 `v1.1.0` 已转 prerelease（保留不删除，`release-hygiene.yml` 幂等固定 latest 口径）
-> 验证基线：L1 33 / L4 28 / DLL 冒烟 9 / Rust 27（lib 13 + 集成 14，含 D7/R5/R11 契约、0600 回归与 percent_decode 回归）/ Go 24 / Tauri engine_state 9 / Flutter 桥接 8 / ABI 四方 19；ci.yml、ci-v2.yml、build-test-deploy、release.yml、release-hygiene.yml、cut-release.yml 六条流水线全绿实证
+> 验证基线：L1 33 / L4 28 / DLL 冒烟 9 / Rust 28（lib 14 + 集成 14，含 D7/R5/R11 契约、0600/percent_decode/scan_dir_strict 回归）/ Go 24 / Tauri engine_state 10 / Flutter 桥接 8 / ABI 四方 19；ci.yml、ci-v2.yml、build-test-deploy、release.yml、release-hygiene.yml、cut-release.yml 六条流水线全绿实证
 > 维护约定：阶段性交付后只更新本文 §0 与 `CHANGELOG.md [Unreleased]`；`AGENTS.md` 只留规范与门禁、不放演进史；过程性记录归 `.codebuddy/skills/软件开发专家团/memory/`（不入库）
 
 ---

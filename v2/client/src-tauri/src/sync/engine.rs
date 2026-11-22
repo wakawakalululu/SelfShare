@@ -26,6 +26,21 @@ pub struct P2pNodeInfo {
     pub listen: String,
 }
 
+/// syncing 集合的 Drop 守卫：任何退出路径（正常/错误/panic/future 取消）
+/// 都保证从集合移除，防止状态卡「同步中」。
+struct SyncingGuard {
+    reg: Arc<Mutex<Registry>>,
+    name: String,
+}
+
+impl Drop for SyncingGuard {
+    fn drop(&mut self) {
+        if let Ok(mut g) = self.reg.lock() {
+            g.syncing.remove(&self.name);
+        }
+    }
+}
+
 /// P2P 状态快照：`enabled` = 设置开关；`watching` = 后台监控运行中；
 /// `node` = 本机节点（仅监控中且开关开启时为 Some）；`peers` = 中心发现列表。
 #[derive(serde::Serialize)]
@@ -310,7 +325,23 @@ impl SyncEngine {
         let folder = PathBuf::from(&m.local_path);
         // 与 start_watch 同口径：P2P 由设置开关驱动（默认关闭）。
         let enable_p2p = self.load_settings().enable_p2p;
+        // R11 余量修正（多 agent 审计）：手动同步与后台巡检互斥——
+        // watcher 正在同步时拒绝手动触发，避免并发双跑丢 state.json 更新。
+        {
+            let w = self.watchers.lock().unwrap();
+            if let Some(h) = w.get(name) {
+                if h.is_running() && h.is_syncing() {
+                    return Err("后台监控正在同步该文件夹，请稍后再试".to_string());
+                }
+            }
+        }
         self.reg.lock().unwrap().syncing.insert(name.to_string());
+        // Drop 守卫：future 被取消（窗口销毁/运行时关停）时也保证 syncing 移除，
+        // 修复此前 early-return/取消导致状态卡「同步中」直至重启的泄漏。
+        let _guard = SyncingGuard {
+            reg: Arc::clone(&self.reg),
+            name: name.to_string(),
+        };
 
         let status = match Self::run_sync(folder, enable_p2p).await {
             Ok(rep) => status_from_report(name, &rep),
