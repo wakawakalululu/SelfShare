@@ -40,7 +40,7 @@
 | ~~P1~~ | ~~存量库只读扫描~~ ✅ 已闭环（`LOOP-20261122-02`） | `desktop/scripts/scan_vault_db.py`（mode=ro / `--immutable`，whitespace / drive_letter / null 判类，`--json` 结论）；本地部署库实测 1 files + 1 versions 行 clean；结论记录见 CHANGELOG | `python tests/test_scan_vault_db.py`（ci.yml self-tests 步骤） |
 | P2 | O-2 / O-3 轻量 UI | 设置页首次进入一次性提示；>512 MiB 文件进度提示 | `npm run build` + 静态扫描 |
 | P2 | `flutter test` 冒烟 | `desktop/app/test/` 桥接层冒烟接入 `ci.yml gui`（`ss_find_mount` 无自然业务调用点，不硬接线） | `flutter test`（CI） |
-| P2 | 断言加固 | `integration.rs` 的 `ss_progress` 子串断言改 `serde_json` 反序列化，消除形状改动时的静默假通过 | `cargo test --release --test integration` |
+| ~~P2~~ | ~~断言加固~~ ✅ 已闭环（`LOOP-20261122-03`） | `integration.rs` 的 `ss_progress` 子串断言改 `serde_json` 反序列化进 `ProgressSnapshot`（形状改动显式失败，不再静默假通过）；`ProgressSnapshot` 补 `Deserialize`（纯增量，C ABI JSON 不变） | `cargo test --release --test integration`（ci.yml rust job 双平台全绿） |
 | P2 | 隔离环境冒烟 | NSIS 真实安装 + GUI 窗口、非 Windows 产物实机、并发基准 | 一次性 VM / 沙箱 |
 | P3 | 工程债 | `abi-ipc.md` C5-6 行号近似引用、CI job 重复收敛、CHANGELOG 历史锚点 | 全文检索 + CI 时长对比 |
 

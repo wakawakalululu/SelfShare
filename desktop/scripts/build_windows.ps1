@@ -30,7 +30,7 @@ if ($SkipFlutter) {
 }
 
 if (-not (Get-Command flutter -ErrorAction SilentlyContinue)) {
-  # 常见安装位置兑底
+  # 常见安装位置兜底
   foreach ($candidate in @('C:\dev\flutter\bin', "$env:LOCALAPPDATA\flutter\bin", 'C:\flutter\bin')) {
     if (Test-Path (Join-Path $candidate 'flutter.bat')) {
       $env:PATH = "$candidate;$env:PATH"
