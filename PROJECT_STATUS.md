@@ -1,9 +1,9 @@
-# 项目状态与后续路线｜2026-11-22（单一事实源）
+# 项目状态与后续路线｜2026-11-23（单一事实源）
 
 > **本文 §0 是当前状态与后续路线的唯一权威入口**；§1 起为 2026-11-04 基线（`42d6764`）的历史盘点快照，R1–R12 已全部闭环，**不再作为当前口径维护**。
 > 仓库：`wakawakalululu/SelfShare`；基线：`master` == `origin/master`（2026-11-22 刷新，见 §0.2）
 > 发布：稳定版 **`v2.1.1`**（8 资产，latest，config.json 0600 安全补丁随版）；`v2.1.0`（P2P 可观测性，首个 minor 功能版）、`v2.0.4`（R5 P2P 数据面）、`v2.0.3`（O-2/O-3 UI）、`v2.0.2`（D7）、`v2.0.1` 补丁版存档；`v2.0.4`（R5 P2P 数据面）、`v2.0.3`（O-2/O-3 UI）、`v2.0.2`（D7）、`v2.0.1` 补丁版存档；演练 `v1.1.0` 已转 prerelease（保留不删除，`release-hygiene.yml` 幂等固定 latest 口径）
-> 验证基线：L1 33 / L4 28 / DLL 冒烟 9 / Rust 26（lib 12 + 集成 14，含 D7/R5/R11 契约与 0600 回归）/ Go 24 / Tauri engine_state 9 / Flutter 桥接 8 / ABI 四方 19；ci.yml、ci-v2.yml、build-test-deploy、release.yml、release-hygiene.yml、cut-release.yml 六条流水线全绿实证
+> 验证基线：L1 33 / L4 28 / DLL 冒烟 9 / Rust 27（lib 13 + 集成 14，含 D7/R5/R11 契约、0600 回归与 percent_decode 回归）/ Go 24 / Tauri engine_state 9 / Flutter 桥接 8 / ABI 四方 19；ci.yml、ci-v2.yml、build-test-deploy、release.yml、release-hygiene.yml、cut-release.yml 六条流水线全绿实证
 > 维护约定：阶段性交付后只更新本文 §0 与 `CHANGELOG.md [Unreleased]`；`AGENTS.md` 只留规范与门禁、不放演进史；过程性记录归 `.codebuddy/skills/软件开发专家团/memory/`（不入库）
 
 ---
@@ -26,7 +26,7 @@
 
 | 维度 | 事实 |
 | --- | --- |
-| 代码 | 2026-11-23 刷新：**P2P 可观测性已落地**（只读 `p2p_status` IPC + 设备页本机节点状态，随 `v2.1.0` 发布，`LOOP-20261123-02`）；此前 2026-11-22：C4-1（`1c4a5fd`）已随 `v2.0.1` 发布；**D7 / P1 假成功已修复**（`LOOP-20261122-01`）；**P2 断言加固已闭环**（`LOOP-20261122-03`）；**O-2/O-3 轻量 UI 已落地**（随 `v2.0.3` 发布）；**Flutter 桥接冒烟 8 例入 gui 门禁**（`LOOP-20261122-05`）；**R5 P2P 数据面已接通**（手动同步按 `enable_p2p` 开关走 peer 优先 + 中心回退，随 `v2.0.4` 发布，`LOOP-20261122-06`） |
+| 代码 | 2026-11-23 刷新：**P2P 可观测性已落地**（只读 `p2p_status` IPC + 设备页本机节点状态，随 `v2.1.0` 发布，`LOOP-20261123-02`）；此前 2026-11-22：C4-1（`1c4a5fd`）已随 `v2.0.1`（2026-11-20）发布；**D7 / P1 假成功已修复**（`LOOP-20261122-01`）；**P2 断言加固已闭环**（`LOOP-20261122-03`）；**O-2/O-3 轻量 UI 已落地**（随 `v2.0.3` 发布）；**Flutter 桥接冒烟 8 例入 gui 门禁**（`LOOP-20261122-05`）；**R5 P2P 数据面已接通**（手动同步按 `enable_p2p` 开关走 peer 优先 + 中心回退，随 `v2.0.4` 发布，`LOOP-20261122-06`）；**config.json 落盘 0600 红线修复**（Rust `atomic_write` Unix 分支，随 `v2.1.1` 发布，多 agent 安全扫描发现，`LOOP-20261123-03`） |
 | 契约 | C3 rel 键规范化、C4 合并语义、C5 ABI/IPC 形状（冻结）、C6 路径 containment 均已落盘；O-1~O-3 已裁决（O-2/O-3 的 UI 增量已实现），O-5/O-6 维持冻结 |
 | 发布 | **`v2.1.1` 8 资产稳定版（latest）**；`v2.1.0`（P2P 可观测性，semver 口径首个 minor）、`v2.0.4`（R5 P2P 数据面）、`v2.0.3`（O-2/O-3）、`v2.0.2`（D7）、`v2.0.1`（C4-1）与 `v2.0.0` 存档；`release-hygiene.yml` 幂等固定 latest=最新补丁版；演练 `v1.1.0` 已转 prerelease |
 | 验证 | 上述历史基线继续有效；新增：Python 50 例对 release 二进制回归（v2.0.0 49/50 → v2.0.1 起 50/50）、ci-v2 9/9（含 Tauri Windows 构建）、release 8 资产端到端、hygiene 断言、WSL 服务端 + Windows GUI 本机联调（截图证据）；O-2/O-3 接线静态扫描门禁 + 5 例自测、Flutter 桥接冒烟 8 例入 ci.yml |
@@ -84,11 +84,11 @@
 | R8 / R9 | 已修复 | 文档站与 wiki 快速开始更新；`v2/ARCHITECTURE.md` 重写；测试数 / C ABI 口径已统一 |
 | R10 | 已修复 | 新增 8 个 Go 单测、并发基准、Linux/Windows 二进制与 HTTPS 实测；Docker 镜像构建与 `go test -race` 已由 CI 通过 |
 | R11 | 已修复 | 设置持久化、托盘暂停/恢复/一键同步与实时 tooltip、在线节点列表、未接线 IPC 已接入前端 |
-| R12 | 已修复 | 生成 `package-lock.json`；根 `ci.yml` 主流程软失败移除；`ci.yml` / `ci-v2.yml` / `pages.yml` 触发分支统一为 `master`；远程 `origin/main` 归档待人工 |
+| R12 | 已修复 | 生成 `package-lock.json`；根 `ci.yml` 主流程软失败移除；`ci.yml` / `ci-v2.yml` / `pages.yml` 触发分支统一为 `master`；远程 `origin/main` 归档待人工（**2026-11-23 已删除**，见 §5.5） |
 | R7 | 已修复 | 删除 `v2/superseded/`（13 文件 / 14.66 MB），并同步 `v2/README.md`、`v2/ARCHITECTURE.md`、`CHANGELOG.md` 的引用 |
 | 发布阻塞点 | 已修复 | `CHANGELOG.md` 锚点改为 `# [v2.0.0]`；`release.yml` notes 提取改用 `index()` 定位、只在一级标题停止，两种 awk 实现均提取 50 行且不含 v1.3.0；输入示例改 `v2.0.0`；已依据 tag 附注补写 `# v1.2.0` 小节 |
 | 发布状态 | 已完成 | `v2.0.0` Release 发布 7 个资产、notes 51 行；CI / CI v2 / Pages 全绿；`origin/main` 仅含 `78d0293 Initial commit`，无独有内容 |
-| refspec 歧义 | 部分处理 | 本地 tag `master` 已删除，`refs/heads/master` 不再歧义；远程 `refs/tags/master` 待人工删除，推送可固定写 `refs/heads/master:refs/heads/master` |
+| refspec 歧义 | 部分处理 | 本地 tag `master` 已删除，`refs/heads/master` 不再歧义；远程 `refs/tags/master` 待人工删除（**2026-11-23 已删除**，见 §5.5），推送可固定写 `refs/heads/master:refs/heads/master` |
 
 **运行测试汇总**：Go 20 项 + `go vet` 全绿；Python 兼容套件对接真实 Go 二进制 19 + 5 全绿；
 Rust 内核 18 + Tauri 状态测试 2 全绿；`npm ci` / `npm run build` / `cargo build` 通过；
@@ -107,7 +107,7 @@ Windows 与 WSL Linux 二进制启动、`/api/ping`、`--version`、HTTPS 均通
 | 本地构建产物 | 8060 个 / 约 8.29 GB | `v2/client/src-tauri/target/`（6884 个文件）、`v2/server/bin/*.exe`、`v2/superseded/server/selfshare-server.exe`、`v2/client/src-tauri/gen/schemas/*.json` | **否** |
 | 已被正确忽略 | — | `desktop/core/target/`、`desktop/app/build/`、`dist/`、`build/`、`__pycache__/`、`*.pyc`、`*.pem` / `*.key` | 否 |
 
-补充事实：Git 索引共 99 个已跟踪文件，`v2/` **完全未纳入版本控制**；`v2/` 目录共 8127 个文件、8.29 GB，其中仅 66 个是源码 / 资源。`origin/main` @ `78d0293` 与 `origin/master` @ `42d6764` 并存且指向不同提交。
+补充事实：Git 索引共 99 个已跟踪文件，`v2/` **完全未纳入版本控制**；`v2/` 目录共 8127 个文件、8.29 GB，其中仅 66 个是源码 / 资源。`origin/main` @ `78d0293` 与 `origin/master` @ `42d6764` 并存且指向不同提交。（origin/main 已于 2026-11-23 删除，见 §5.5 清理记录）
 
 ### 1.3 提交拆分建议（详见 §5.2）
 
@@ -288,10 +288,10 @@ git add v2/client/index.html v2/client/package.json v2/client/svelte.config.js \
 | --- | --- |
 | 基线提交 | `42d67645af534c5eec3c43668311604616381745`（`master` / `origin/master`） |
 | 发布标签 | `v1.1.0` / `v1.2.0` / `v1.3.0`（`714e9ee91cfe0e69ad9fb25e4c3fdc9a37f36d85`）/ `v2.0.0`（`1c8559c`，附注 tag，Release 7 资产） |
-| 另一远程分支 | `origin/main` @ `78d0293a9e03cdb90bf9fa430c8752a7014a45cd`（仅含 Initial commit，待人工归档） |
+| 另一远程分支 | `origin/main` @ `78d0293a9e03cdb90bf9fa430c8752a7014a45cd`（仅含 Initial commit；**已于 2026-11-23 删除**，见下方清理行与 §0.3.1 裁决） |
 | 分析日期 | 2026-11-04（含当日第二轮开发与运行测试；2026-11-07 状态见 §1.1.1） |
-| 2026-11-23 清理 | **经用户裁决执行**（§0.3.1 破坏性项 G/H，`LOOP-20261123-02` 轮内）：`refs/heads/main`（78d0293）与 `refs/tags/master`（176710fe）已删除（各留 200→204→404 证据链）；v1.2.0（release id 432163859）/ v1.3.0（id 432212150）release+tag 已删除（同样留证据链）。剩余：master 分支 + tags v2.1.0…v2.0.0/v1.1.0；releases v2.1.0（latest）…v2.0.0 + v1.1.0（prerelease，按既有决定保留）。§1 起历史小节中的 v1.2.0/v1.3.0 下载链接因此失效属预期（CHANGELOG 小节仍保留文案） |
+| 2026-11-23 清理 | **经用户裁决执行**（§0.3.1 破坏性项 G/H，`LOOP-20261123-02` 轮内）：`refs/heads/main`（78d0293）与 `refs/tags/master`（176710fe）已删除（各留 200→204→404 证据链）；v1.2.0（release id 432163859）/ v1.3.0（id 432212150）release+tag 已删除（同样留证据链）。清理时 latest=v2.1.0（后被 v2.1.1 取代，见 §0）；剩余：master 分支 + tags v2.1.1…v2.0.0/v1.1.0；releases v2.1.1（latest）…v2.0.0 + v1.1.0（prerelease，按既有决定保留）。§1 起历史小节中的 v1.2.0/v1.3.0 下载链接因此失效属预期（CHANGELOG 小节仍保留文案） |
 | 分析范围 | 根目录 v1（99 个已跟踪文件）、`v2/`（8127 个文件）、`.github/workflows/`、`docs/`、`.github/wiki/`、`deploy/` |
 | 运行验证 | Go 20 + vet、Python 29（其中 24 对接 Go 二进制）、Rust 18 + 2、前端构建、Tauri 编译、Windows/WSL 二进制、HTTPS、并发基准首次观测 21.5 MB/s（同轮 A/B 未复现 33 倍）；CI / CI v2 / Pages / Release 实跑全绿，详见 `v2/RELEASE_SUMMARY.md` §2.2、§4.1 |
 | 已执行操作 | `git add` / `git commit` / `git push` 已完成，`master` 与 `v2.0.0` tag 均已推送，工作区干净 |
-| 仍待人工 | 删除远程 `origin/main` 与 `refs/tags/master`；darwin / linux-arm64 二进制实机冒烟 |
+| ~~仍待人工~~ | ~~删除远程 `origin/main` 与 `refs/tags/master`~~ **2026-11-23 已执行**（见上方清理行，证据链 200→204→404）；darwin / linux-arm64 二进制实机冒烟仍待硬件 |

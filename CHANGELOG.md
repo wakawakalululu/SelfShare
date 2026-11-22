@@ -44,7 +44,7 @@
 - **O-4 分析复核（`LOOP-20261123-01`，不动裁决）**：三端引用全景排查（Go `registry.go::sealKey` env 优先 / Python `_key()` 不读 env / Rust·Dart 零引用）+「支持/移除」两方案影响面与建议（维持 ADR-002；若需演进选「支持」兼容性优先），已追加至 `docs/decisions/OPEN-DECISIONS.md` O-4 分析记录。
 - **§0.3.1 下一阶段提案（`LOOP-20261123-01`，待用户裁决）**：P2P 可观测性（R11 余量）、文档站/wiki 口径刷新、`bench_ab` 常态化、真实部署 `scan_vault_db` 采集指引、发版流程余量收敛（PAT 切 tag 自动触发 release.yml 与手动 dispatch 双跑）、semver 口径立此存照（功能进 minor，下一功能版 = v2.1.0）。见 PROJECT_STATUS §0.3.1。
 
-测试口径：Python 33 例（sync 22 / p2p 6 / pairing 5）+ 可选 DLL 冒烟 9 例、Rust 26 例（lib 内联 12 + 集成 14；历史 18 例）、Go 24 例（历史 20 例）、Tauri `engine_state` 9 例、Flutter 桥接冒烟 8 例（flutter test，CI）。
+测试口径：Python 33 例（sync 22 / p2p 6 / pairing 5）+ 可选 DLL 冒烟 9 例、Rust 27 例（lib 内联 13 + 集成 14；历史 18 例）、Go 24 例（历史 20 例）、Tauri `engine_state` 9 例、Flutter 桥接冒烟 8 例（flutter test，CI）。
 
 ---
 
@@ -72,7 +72,9 @@
 
 客户端安装包直接覆盖升级（Windows 客户端走 ACL，权限行为不变；Unix/macOS 侧修复全局可读问题——建议尽快升级）；服务端无行为变更（v2.1.0 服务端可继续使用，二进制仅版本号差异），数据目录通用。
 
+---
 
+# [v2.1.0] — 2026-11-23
 
 发布日期：2026-11-23
 发布范围：Tauri 客户端功能版——**P2P 可观测性（R11 余量，§0.3.1 提案 A 经用户裁决立项）**；Go 服务端与 v1 便携包按既定 release 流程重打（服务端代码与 v2.0.4 相同，仅版本号随版推进）。**本版起 semver 口径生效：功能进 minor**。
@@ -96,7 +98,9 @@
 
 客户端安装包直接覆盖升级；服务端无行为变更（v2.0.4 服务端可继续使用，二进制仅版本号差异），数据目录通用。P2P 仍默认关闭（设置页开启，限局域网）。
 
+---
 
+# [v2.0.4] — 2026-11-22
 
 发布日期：2026-11-22
 发布范围：Tauri 客户端功能版——**R5 / P2P 数据面接通**（`enable_p2p` 开关驱动的手动同步 peer 优先拉取 + 中心回退）；随版携带已入库的 **flutter 桥接冒烟门禁**；Go 服务端与 v1 便携包按既定 release 流程重打（服务端代码与 v2.0.3 相同，仅版本号随版推进）。

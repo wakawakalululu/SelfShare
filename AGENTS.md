@@ -110,7 +110,7 @@ Windows runner 上跑 CLI 冒烟需 `PYTHONUTF8=1` / `PYTHONIOENCODING=utf-8`（
 | 层 | 内容 | 对应 CI |
 | --- | --- | --- |
 | L1 | Python 33 例（sync 22 / p2p 6 / pairing 5）+ 可选 DLL 冒烟 9 例（`test_core_dll.py`，`SELFSHARE_CORE_DLL` 门控） | `ci.yml` `python`；DLL 冒烟由 `core-dll-smoke` job 覆盖（已实跑）；四方名称一致性检查脚本 `desktop/scripts/check_abi_names.py`（header / dart / abi / `ffi.rs` Rust 导出）由 `ci.yml` 对应步骤在 CI 中执行（口径见 `docs/contracts/abi-ipc.md` C5-1/C5-6） |
-| L2 | Rust 26 例（lib 内联 12 + 集成 14；历史 18 例） | `ci.yml` `rust` |
+| L2 | Rust 27 例（lib 内联 13 + 集成 14；历史 18 例） | `ci.yml` `rust` |
 | L3 | Go 24 例 + `go vet` + `go test -race`（历史 20 例） | `ci-v2.yml` `server-test` |
 | L4 | 跨实现：Python 兼容套件对接真实 Go 二进制（sync 22 + p2p 6 = 28 例） | `ci-v2.yml` `compat`；D 轨道 G3 硬门槛，须用**新编译** Go 二进制 |
 | L5 | 前端 `npm run build` + Tauri `cargo check --all-targets`；`engine_state` 集成测试 | `ci-v2.yml` `client`（前端构建 + Tauri 打包）；`ci.yml` `v2-client`（cargo check + `engine_state`，已实跑） |
@@ -119,7 +119,7 @@ Windows runner 上跑 CLI 冒烟需 `PYTHONUTF8=1` / `PYTHONIOENCODING=utf-8`（
 
 没跑过的层要写明原因（如无 Docker 引擎、无 gcc/cgo、无 Flutter SDK），不得用「应该没问题」代替。
 
-**验证覆盖现状（静态盘点，不是已承诺能力）**：HTTPS 自签与 `GET /api/pair` 冒烟由 `ci-v2.yml compat` 覆盖；`engine_state` 9 例、DLL 冒烟 `core-dll-smoke` 9 例、Rust 26 例（lib 12 + 集成 14）、Go 24 例均由 `ci.yml` / `ci-v2.yml` 实证（run 编号与逐轮演进史见 `.codebuddy/skills/软件开发专家团/memory/`，不在此重复）。四类必测中「peer 不可达回退」有独立断言（`tests/test_p2p.py::PeerFallbackTestCase`），「删除与编辑相撞」两向由 Rust 集成与 Go store 双层覆盖。**当前状态与后续路线的唯一入口是 `PROJECT_STATUS.md` §0**；涉及未覆盖场景时必须补用例并说明验证方式，不得写成「已由 CI 覆盖」。
+**验证覆盖现状（静态盘点，不是已承诺能力）**：HTTPS 自签与 `GET /api/pair` 冒烟由 `ci-v2.yml compat` 覆盖；`engine_state` 9 例、DLL 冒烟 `core-dll-smoke` 9 例、Rust 27 例（lib 13 + 集成 14）、Go 24 例均由 `ci.yml` / `ci-v2.yml` 实证（run 编号与逐轮演进史见 `.codebuddy/skills/软件开发专家团/memory/`，不在此重复）。四类必测中「peer 不可达回退」有独立断言（`tests/test_p2p.py::PeerFallbackTestCase`），「删除与编辑相撞」两向由 Rust 集成与 Go store 双层覆盖。**当前状态与后续路线的唯一入口是 `PROJECT_STATUS.md` §0**；涉及未覆盖场景时必须补用例并说明验证方式，不得写成「已由 CI 覆盖」。
 
 ## 7. 交付物归档映射（专家团按此落盘，不另建体系）
 
