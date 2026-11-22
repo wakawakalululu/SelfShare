@@ -40,6 +40,10 @@
 - **P3 工程债收敛（`LOOP-20261122-07`）**：① `docs/contracts/abi-ipc.md` 行号近似引用全部改为符号/小节锚点（`ffi.rs::ok_json` 等；`selfshare_core.h` 清单锚点保留，由 `check_abi_names.py` 机械锁定），并修正两处已过时描述（`integration.rs` 现为反序列化断言而非子串断言；`security-contract.md` 引用指向真实小节）；② `build-test-deploy.yml` 移除与权威门禁重复的 `test-server`（ci-v2 `server-test`）与 `test-python`（ci.yml `python` + ci-v2 `compat`）两 job，收敛为「构建 + 冒烟 + 发布 + 部署」链路（Docker 冒烟保留为发布前置门），`CONTRIBUTING.md` / `AGENTS.md` 流水线描述同步；③ CHANGELOG 历史锚点统一：v1.x 段 `# v1.3.0 发布说明` 等改为 `# [v1.3.0]` 方括号约定，8 个版本锚点的 release.yml awk 提取全部非空。
 - **P2 隔离环境冒烟·可达子项（`LOOP-20261122-07`）**：并发基准对 v2.0.4 release 二进制实跑（`bench_upload.py`：8 MiB / 16 并发 0.096 s = 83.49 MB/s，32/32 上传 + 32/32 回读一致）；Windows 原生实机执行 release 二进制 `--version`=2.0.4；NSIS 真实安装 + GUI 窗口由 v2.0.3 / v2.0.4 两轮截图闭环。环境受限余量（darwin / linux-arm64 实机、真一次性 VM）须硬件，如实记录不虚报。
 
+- **Flutter material.dart 弃用——迁移尝试与生态结论（`LOOP-20261123-01`）**：Flutter stable 3.50.0 起 `package:flutter/material.dart` 标记 deprecated（info 级，改用 `package:material_ui/material_ui.dart`）。迁移提交 `28a4281` 以 ci.yml gui job 实测裁决：**material_ui 在 SDK 中存在但不是 material.dart 的 API 兼容门面**（导入可解析，但 `Color` / `InputDecorationTheme` / `OutlineInputBorder` / `BorderRadius` / `BorderSide` 等全部未定义，Analyze 失败）——机械迁移不成立，已回退（`0b9c90f`，恢复已发布内容）。结论：维持 material.dart + `--no-fatal-infos`（info 不拦截），真实迁移须等生态成熟并重写 UI 代码面，属条件触发项。
+- **O-4 分析复核（`LOOP-20261123-01`，不动裁决）**：三端引用全景排查（Go `registry.go::sealKey` env 优先 / Python `_key()` 不读 env / Rust·Dart 零引用）+「支持/移除」两方案影响面与建议（维持 ADR-002；若需演进选「支持」兼容性优先），已追加至 `docs/decisions/OPEN-DECISIONS.md` O-4 分析记录。
+- **§0.3.1 下一阶段提案（`LOOP-20261123-01`，待用户裁决）**：P2P 可观测性（R11 余量）、文档站/wiki 口径刷新、`bench_ab` 常态化、真实部署 `scan_vault_db` 采集指引、发版流程余量收敛（PAT 切 tag 自动触发 release.yml 与手动 dispatch 双跑）、semver 口径立此存照（功能进 minor，下一功能版 = v2.1.0）。见 PROJECT_STATUS §0.3.1。
+
 测试口径：Python 33 例（sync 22 / p2p 6 / pairing 5）+ 可选 DLL 冒烟 9 例、Rust 内核 25 例（历史 18 例）、Go 24 例（历史 20 例）、Tauri `engine_state` 测试、Flutter 桥接冒烟 8 例（flutter test，CI）。
 
 ---

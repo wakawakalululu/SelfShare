@@ -39,6 +39,20 @@
 
 **已裁决（2026-11-08）：保持现状 + 文档警示，见 `ADR-002-seal-key-env.md`。**
 
+**分析记录（2026-11-23 复核，`LOOP-20261123-01`，只分析不改裁决）**：三端引用全景 =
+Go `v2/server/internal/store/registry.go::sealKey`（env 优先于持久化 `_seal_key`，hex-32
+直用否则 sha256，调用点 :163/:212/:247）+ `_seal_key` 落盘字段；Python `selfshare/store.py`
+`_key()`（**不读 env**，仅持久化随机键）；Rust / Dart **零引用**。文档面 6 处
+（ADR-002 / 本文件 / security-contract §6 / AGENTS §5.4+§7 / v2/README:142 /
+Dockerfile:47 + docker-compose:12）。「支持」（Python 端补齐同 env 语义）与「移除」
+（Go 端删 env 分支）两方案影响面：前者对未设 env 的存量部署零影响、使已设 env 的
+跨实现混跑从「明确失败」变「按语义成功」，但动 v1 已发布安全路径且当前无需求；
+后者简化安全面（服务端零 env 读取）但会破坏**已（违反警示）设置 env** 部署的
+`token_sealed` 解封兼容（token 以 env 派生键密封，删分支后改用持久化键解不开），
+须发服务端补丁版。**建议：维持 ADR-002 不动**（无真实需求，成本>收益）；若未来
+容器固定密钥需求出现，选「支持」而非「移除」（兼容性优先），届时走 D 轨道 + L4。
+完整记录：`selfshare-loop/ANALYSIS.md` §16（工作区文档，不入库）。
+
 ## O-5 · C ABI 返回 JSON 是否就地统一为 `ok_json`（**v2 变更**）
 
 - 背景：`requirement-card.md` §8 把「3 个裸 JSON、`ss_probe` 双层 `ok`、NUL 错误分支缺 `ok`」
