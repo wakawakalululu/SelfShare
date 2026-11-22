@@ -114,7 +114,7 @@ Windows runner 上跑 CLI 冒烟需 `PYTHONUTF8=1` / `PYTHONIOENCODING=utf-8`（
 | L3 | Go 24 例 + `go vet` + `go test -race`（历史 20 例） | `ci-v2.yml` `server-test` |
 | L4 | 跨实现：Python 兼容套件对接真实 Go 二进制（sync 22 + p2p 6 = 28 例） | `ci-v2.yml` `compat`；D 轨道 G3 硬门槛，须用**新编译** Go 二进制 |
 | L5 | 前端 `npm run build` + Tauri `cargo check --all-targets`；`engine_state` 集成测试 | `ci-v2.yml` `client`（前端构建 + Tauri 打包）；`ci.yml` `v2-client`（cargo check + `engine_state`，已实跑） |
-| L6 | Flutter `analyze` + Windows 构建 | `ci.yml` `gui` |
+| L6 | Flutter `analyze` + `flutter test` 桥接冒烟（8 例，宿主机 VM 直跑 dart:ffi） + Windows 构建 | `ci.yml` `gui` |
 | L7 | Docker 镜像 `/api/ping`、二进制 `--version` / HTTPS、Release 资产 | `ci-v2.yml` `docker`、`release.yml` |
 
 没跑过的层要写明原因（如无 Docker 引擎、无 gcc/cgo、无 Flutter SDK），不得用「应该没问题」代替。

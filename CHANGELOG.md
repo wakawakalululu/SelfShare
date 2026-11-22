@@ -35,8 +35,9 @@
 
 - Release 去旧留新（`LOOP-20261120-01`）：新增 `.github/workflows/release-hygiene.yml`（`workflow_dispatch` + 本文件 push 触发，幂等可逆），`gh release edit` 将演练发布 `v1.1.0` 转 prerelease、稳定版固定 `--latest`，`get_latest_release` 口径回归稳定版；README 下载说明同步校正。仅改 release 元数据，不删除任何资产。
 - **P2 断言加固（`LOOP-20261122-03`）**：`desktop/core/tests/integration.rs::ffi_pair_failure_resets_progress` 对 `ss_progress` 快照的断言从子串匹配改为 serde_json 反序列化进 `ProgressSnapshot`（快照必须可解析、`state` 复位为 `error` 且不得停留 `syncing`、`last_error` / `message` 非空）——进度 JSON 形状改动（字段改名/缺失/类型变化）时显式失败，不再静默假通过；`ProgressSnapshot` 相应补 `serde::Deserialize`（纯增量，C ABI 线上 JSON 输出不变，无新增依赖）。顺带修正 `desktop/scripts/build_windows.ps1` 注释错字（兑底→兜底），不改行为。
+- **P2 flutter test 冒烟（`LOOP-20261122-05`）**：新增 `desktop/app/test/rust_bridge_smoke_test.dart`（8 例）——`flutter test` 在宿主机 VM 直跑 dart:ffi，覆盖桥接层自然业务面：裸 JSON 双函数（`ss_version` version=1.0.0 + host_id、`ss_progress` state 为字符串且非 syncing、`ss_watch_status` watching=false）、ok_json 包装（`ss_watch_stop` 幂等）、C5-3 无匹配白名单（`tryFindMount` → null / `findMount` → 异常）、错误通道（`mountInfo` 不存在目录 → `SelfShareException` 不崩）、不可达 `ss_probe` 返回 false、异常 toString 透传。`ci.yml` gui job 在 Analyze 后增补「Bridge layer smoke tests」步骤（`flutter test`）——该 job 前置的 `cargo build --release` 已把 DLL 落在桥接开发态回退路径，测试加载真实内核而非桩；不为 `ss_find_mount` 硬接业务调用点（路线图口径）。
 
-测试口径：Python 33 例（sync 22 / p2p 6 / pairing 5）+ 可选 DLL 冒烟 9 例、Rust 内核 25 例（历史 18 例）、Go 24 例（历史 20 例）、Tauri `engine_state` 测试。
+测试口径：Python 33 例（sync 22 / p2p 6 / pairing 5）+ 可选 DLL 冒烟 9 例、Rust 内核 25 例（历史 18 例）、Go 24 例（历史 20 例）、Tauri `engine_state` 测试、Flutter 桥接冒烟 8 例（flutter test，CI）。
 
 ---
 

@@ -39,7 +39,7 @@
 | ~~P1~~ | ~~D7~~ ✅ 已闭环（`LOOP-20261122-01`） | Dashboard 读取 sync IPC 返回状态，失败显示明细；`engine_state` 新增契约钉死测试 | `cargo test --test engine_state`、`npm run build`（ci-v2 v2-client 全绿） |
 | ~~P1~~ | ~~存量库只读扫描~~ ✅ 已闭环（`LOOP-20261122-02`） | `desktop/scripts/scan_vault_db.py`（mode=ro / `--immutable`，whitespace / drive_letter / null 判类，`--json` 结论）；本地部署库实测 1 files + 1 versions 行 clean；结论记录见 CHANGELOG | `python tests/test_scan_vault_db.py`（ci.yml self-tests 步骤） |
 | ~~P2~~ | ~~O-2 / O-3 轻量 UI~~ ✅ 已闭环（`LOOP-20261122-04`，随 `v2.0.3` 发布） | 设置页首次进入一次性提示（localStorage 一次性标记，O-2 裁决口径）；新增 `list_large_files` IPC（只读遍历本地目录，>512 MiB 阈值），仪表盘按挂载提示大文件与耗时估算（~10 MB/s 基准，标注估算）；接线静态扫描门禁（11 标记）+ 5 例自测入 ci.yml | `npm run build` + 静态扫描（ci.yml v2-client 步骤 + python self-tests） |
-| P2 | `flutter test` 冒烟 | `desktop/app/test/` 桥接层冒烟接入 `ci.yml gui`（`ss_find_mount` 无自然业务调用点，不硬接线） | `flutter test`（CI） |
+| ~~P2~~ | ~~`flutter test` 冒烟~~ ✅ 已闭环（`LOOP-20261122-05`） | `desktop/app/test/rust_bridge_smoke_test.dart` 8 例桥接冒烟（宿主机 VM 直跑 dart:ffi，加载 gui job 前置构建的真实 DLL：裸 JSON 三函数 / ok_json 幂等 / C5-3 白名单 / 错误通道 / 不可达 probe）；`ci.yml` gui job 增补 `flutter test` 步骤；不为 `ss_find_mount` 硬接业务调用点 | `flutter test`（CI gui job「Bridge layer smoke tests」步骤） |
 | ~~P2~~ | ~~断言加固~~ ✅ 已闭环（`LOOP-20261122-03`） | `integration.rs` 的 `ss_progress` 子串断言改 `serde_json` 反序列化进 `ProgressSnapshot`（形状改动显式失败，不再静默假通过）；`ProgressSnapshot` 补 `Deserialize`（纯增量，C ABI JSON 不变） | `cargo test --release --test integration`（ci.yml rust job 双平台全绿） |
 | P2 | 隔离环境冒烟 | NSIS 真实安装 + GUI 窗口、非 Windows 产物实机、并发基准 | 一次性 VM / 沙箱 |
 | P3 | 工程债 | `abi-ipc.md` C5-6 行号近似引用、CI job 重复收敛、CHANGELOG 历史锚点 | 全文检索 + CI 时长对比 |
