@@ -30,7 +30,7 @@
 | 契约 | C3 rel 键规范化、C4 合并语义、C5 ABI/IPC 形状（冻结）、C6 路径 containment 均已落盘；O-1~O-3 已裁决（O-2/O-3 的 UI 增量已实现），O-5/O-6 维持冻结 |
 | 发布 | **`v2.0.4` 8 资产稳定版（latest）**；`v2.0.3`（O-2/O-3）、`v2.0.2`（D7）、`v2.0.1`（C4-1）与 `v2.0.0` 存档；`release-hygiene.yml` 幂等固定 latest=最新补丁版；演练 `v1.1.0` 已转 prerelease |
 | 验证 | 上述历史基线继续有效；新增：Python 50 例对 release 二进制回归（v2.0.0 49/50 → v2.0.1 起 50/50）、ci-v2 9/9（含 Tauri Windows 构建）、release 8 资产端到端、hygiene 断言、WSL 服务端 + Windows GUI 本机联调（截图证据）；O-2/O-3 接线静态扫描门禁 + 5 例自测、Flutter 桥接冒烟 8 例入 ci.yml |
-| 遗留 | §0.3 所列 P1/P2 项；无 P0 未闭环项 |
+| 遗留 | §0.3 路线图 P1/P2/P3 全部闭环（2026-11-22）；仅余环境受限余量（darwin / linux-arm64 实机与真一次性 VM 安装，须硬件）。无 P0/P1/P2 未闭环项；新增工作按「一次迭代一个目标」在 §0.3 增行 |
 
 ### 0.3 后续路线（按优先级，一次迭代一个目标）
 
@@ -42,8 +42,8 @@
 | ~~P2~~ | ~~`flutter test` 冒烟~~ ✅ 已闭环（`LOOP-20261122-05`） | `desktop/app/test/rust_bridge_smoke_test.dart` 8 例桥接冒烟（宿主机 VM 直跑 dart:ffi，加载 gui job 前置构建的真实 DLL：裸 JSON 三函数 / ok_json 幂等 / C5-3 白名单 / 错误通道 / 不可达 probe）；`ci.yml` gui job 增补 `flutter test` 步骤；不为 `ss_find_mount` 硬接业务调用点 | `flutter test`（CI gui job「Bridge layer smoke tests」步骤） |
 | ~~R5~~ | ~~P2P 数据面（Tauri）~~ ✅ 已闭环（`LOOP-20261122-06`，随 `v2.0.4` 发布） | 手动同步 `sync_once` 按 `enable_p2p` 开关（默认关闭，O-2 口径）走 peer 优先拉取 + 中心静默回退（C6 §3 HMAC 不变）；后台监控路径的 P2P（R11）不变；新增 `engine_state` 契约测试钉死「开关开启不改 IPC 失败形状」；数据面路由由内核层 `test_p2p.py` + Rust 集成覆盖 | `cargo test --test engine_state`、`cargo check --all-targets`（ci/ci-v2 双绿） |
 | ~~P2~~ | ~~断言加固~~ ✅ 已闭环（`LOOP-20261122-03`） | `integration.rs` 的 `ss_progress` 子串断言改 `serde_json` 反序列化进 `ProgressSnapshot`（形状改动显式失败，不再静默假通过）；`ProgressSnapshot` 补 `Deserialize`（纯增量，C ABI JSON 不变） | `cargo test --release --test integration`（ci.yml rust job 双平台全绿） |
-| P2 | 隔离环境冒烟 | NSIS 真实安装 + GUI 窗口、非 Windows 产物实机、并发基准 | 一次性 VM / 沙箱 |
-| P3 | 工程债 | `abi-ipc.md` C5-6 行号近似引用、CI job 重复收敛、CHANGELOG 历史锚点 | 全文检索 + CI 时长对比 |
+| ~~P2~~ | ~~隔离环境冒烟~~ ✅ 可达子项已闭环（`LOOP-20261122-07`） | NSIS 真实安装 + GUI 窗口（v2.0.3 / v2.0.4 两轮静默安装，截图证据）；并发基准（v2.0.4 release 二进制：8 MiB / 16 并发 0.096 s = **83.49 MB/s**，32/32 上传 + 32/32 回读一致，`bench_upload.py`）；非 Windows 产物实机（linux-amd64 64 例回归 + Windows 原生 `--version`=2.0.4）。**环境受限余量**：darwin / linux-arm64 实机（无 macOS、无 qemu）、真一次性 VM 安装（当前为既有 Windows 宿主）——须硬件，非代码缺口 | `python v2/scripts/bench_upload.py --server <release 二进制>`、Windows 原生执行 |
+| ~~P3~~ | ~~工程债~~ ✅ 已闭环（`LOOP-20261122-07`） | ① `abi-ipc.md` 行号近似引用全部改符号/小节锚点（ffi.rs::ok_json 等；h 文件清单锚点保留，由 `check_abi_names.py` 机械锁定），并修正已过时的「integration.rs 子串断言」描述（现为反序列化断言）；② CI 重复收敛：`build-test-deploy.yml` 移除与 ci-v2 `server-test` / `compat`、ci.yml `python` 重复的 test-server / test-python 两 job，收敛为「构建 + 发布 + 部署」链路（Docker 冒烟保留为发布前置门）；③ CHANGELOG 历史锚点统一（v1.x 段 `# v1.3.0 发布说明` → `# [v1.3.0]` 等，8 个版本锚点 awk 提取全部非空） | 全文检索（行号引用清零、job 引用无残留）+ CI 时长对比（btd 收敛前后） |
 
 > 说明：O-5（C ABI 形状 v2 统一）与 O-6（盘符语义统一）**不列入实施路线**——均属不可兼容 v2 变更，按红线维持冻结；若立项须先明确大版本、存量库扫描、三端同步与 L3/L4 实证。
 

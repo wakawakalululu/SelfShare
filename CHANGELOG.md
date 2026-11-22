@@ -37,6 +37,9 @@
 - **P2 断言加固（`LOOP-20261122-03`）**：`desktop/core/tests/integration.rs::ffi_pair_failure_resets_progress` 对 `ss_progress` 快照的断言从子串匹配改为 serde_json 反序列化进 `ProgressSnapshot`（快照必须可解析、`state` 复位为 `error` 且不得停留 `syncing`、`last_error` / `message` 非空）——进度 JSON 形状改动（字段改名/缺失/类型变化）时显式失败，不再静默假通过；`ProgressSnapshot` 相应补 `serde::Deserialize`（纯增量，C ABI 线上 JSON 输出不变，无新增依赖）。顺带修正 `desktop/scripts/build_windows.ps1` 注释错字（兑底→兜底），不改行为。
 - **P2 flutter test 冒烟（`LOOP-20261122-05`）**：新增 `desktop/app/test/rust_bridge_smoke_test.dart`（8 例）——`flutter test` 在宿主机 VM 直跑 dart:ffi，覆盖桥接层自然业务面：裸 JSON 双函数（`ss_version` version=1.0.0 + host_id、`ss_progress` state 为字符串且非 syncing、`ss_watch_status` watching=false）、ok_json 包装（`ss_watch_stop` 幂等）、C5-3 无匹配白名单（`tryFindMount` → null / `findMount` → 异常）、错误通道（`mountInfo` 不存在目录 → `SelfShareException` 不崩）、不可达 `ss_probe` 返回 false、异常 toString 透传。`ci.yml` gui job 在 Analyze 后增补「Bridge layer smoke tests」步骤（`flutter test`）——该 job 前置的 `cargo build --release` 已把 DLL 落在桥接开发态回退路径，测试加载真实内核而非桩；不为 `ss_find_mount` 硬接业务调用点（路线图口径）。
 
+- **P3 工程债收敛（`LOOP-20261122-07`）**：① `docs/contracts/abi-ipc.md` 行号近似引用全部改为符号/小节锚点（`ffi.rs::ok_json` 等；`selfshare_core.h` 清单锚点保留，由 `check_abi_names.py` 机械锁定），并修正两处已过时描述（`integration.rs` 现为反序列化断言而非子串断言；`security-contract.md` 引用指向真实小节）；② `build-test-deploy.yml` 移除与权威门禁重复的 `test-server`（ci-v2 `server-test`）与 `test-python`（ci.yml `python` + ci-v2 `compat`）两 job，收敛为「构建 + 冒烟 + 发布 + 部署」链路（Docker 冒烟保留为发布前置门），`CONTRIBUTING.md` / `AGENTS.md` 流水线描述同步；③ CHANGELOG 历史锚点统一：v1.x 段 `# v1.3.0 发布说明` 等改为 `# [v1.3.0]` 方括号约定，8 个版本锚点的 release.yml awk 提取全部非空。
+- **P2 隔离环境冒烟·可达子项（`LOOP-20261122-07`）**：并发基准对 v2.0.4 release 二进制实跑（`bench_upload.py`：8 MiB / 16 并发 0.096 s = 83.49 MB/s，32/32 上传 + 32/32 回读一致）；Windows 原生实机执行 release 二进制 `--version`=2.0.4；NSIS 真实安装 + GUI 窗口由 v2.0.3 / v2.0.4 两轮截图闭环。环境受限余量（darwin / linux-arm64 实机、真一次性 VM）须硬件，如实记录不虚报。
+
 测试口径：Python 33 例（sync 22 / p2p 6 / pairing 5）+ 可选 DLL 冒烟 9 例、Rust 内核 25 例（历史 18 例）、Go 24 例（历史 20 例）、Tauri `engine_state` 测试、Flutter 桥接冒烟 8 例（flutter test，CI）。
 
 ---
@@ -196,7 +199,7 @@
 
 ---
 
-# v1.3.0 发布说明
+# [v1.3.0]
 
 发布日期：2026-11-03
 
@@ -261,7 +264,7 @@ README 从 210 行精简到 100 行，三步快速开始放在最顶部。
 | Windows GUI 构建与冒烟 | 通过 |
 | GitHub Actions | 7/7 全绿 |
 
-# v1.2.0 发布说明
+# [v1.2.0]
 
 发布日期：2026-11-03（tag `baddac95`，指向提交 `27c3a25`）
 
@@ -270,7 +273,7 @@ README 从 210 行精简到 100 行，三步快速开始放在最顶部。
 
 ---
 
-# v1.1.0 发布说明
+# [v1.1.0]
 
 发布日期：2026-11-02
 

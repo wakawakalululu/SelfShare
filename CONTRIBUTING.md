@@ -143,7 +143,7 @@ docs(wiki): add FAQ
 - `ci.yml` / `ci-v2.yml`：PR 与全平台构建测试门禁（Python / Rust / Flutter / Tauri / Go）
 - `pages.yml`：`docs/` Jekyll 文档站 -> GitHub Pages
 - `release.yml`：`v*` 标签 -> GitHub Release
-- `build-test-deploy.yml`：`master` / `v*` 上的发布流水线，先跑构建与回归测试，再构建并冒烟 Docker 镜像，推送到 `ghcr.io/<owner>/<repo>`（`latest`、版本、`sha-xxxxxxx` 标签），最后可选 SSH 滚动部署到自托管服务器
+- `build-test-deploy.yml`：`master` / `v*` 上的构建发布流水线——构建前端并校验产物、构建并冒烟 Docker 镜像（发布前置门），推送到 `ghcr.io/<owner>/<repo>`（`latest`、版本、`sha-xxxxxxx` 标签），最后可选 SSH 滚动部署到自托管服务器。回归测试不在此重复：Go race/vet 由 `ci-v2.yml`、Python 套件由 `ci.yml`、L4 兼容由 `ci-v2.yml` 权威覆盖
 
 推送 GHCR 用内置 `GITHUB_TOKEN`；远程部署所需的变量与密钥列在 `build-test-deploy.yml` 顶部注释中。未配置 `DEPLOY_HOST` 时只发布镜像，不会接触线上服务。
 

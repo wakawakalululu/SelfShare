@@ -36,7 +36,7 @@
 | `v2/scripts/` | 构建、检查、并发基准 | `v2/scripts/check.sh` |
 | `docs/`、`.github/wiki/` | Jekyll 文档站与 wiki | `docs/_config.yml` |
 | `deploy/`、`v2/server/deploy/` | systemd / Windows 计划任务 / Docker 部署 | `deploy/systemd/*.service` |
-| `.github/workflows/` | 5 条流水线：`ci.yml`、`ci-v2.yml`、`pages.yml`、`release.yml`、`build-test-deploy.yml` | 对应 yml |
+| `.github/workflows/` | 7 条流水线：`ci.yml`、`ci-v2.yml`、`pages.yml`、`release.yml`、`build-test-deploy.yml`、`release-hygiene.yml`、`cut-release.yml` | 对应 yml |
 | `PROJECT_STATUS.md` / `v2/RELEASE_SUMMARY.md` / `CHANGELOG.md` | 状态快照 / 发布验证记录 / 对外发布说明 | 文件首节 |
 
 `v2/deploy/docker/`、`v2/.github/workflows/` 为空目录；GitHub Actions 只识别仓库根 `.github/workflows/`，**不要**在 `v2/` 下新建工作流。
