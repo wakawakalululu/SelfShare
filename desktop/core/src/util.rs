@@ -90,15 +90,33 @@ fn hex(bytes: &[u8]) -> String {    let mut s = String::with_capacity(bytes.len(
 }
 
 /// 原子写入：先写同目录临时文件，再 rename 覆盖。
+/// Unix 下临时文件以 0600 创建（config.json / registry.json 等落盘内容含
+/// vault token，AGENTS §5.4-4 红线「config.json 落盘 0600」；rename 保留权限）。
+/// Windows 走 ACL，无此参数，行为不变。
 pub fn atomic_write(path: &Path, data: &[u8]) -> io::Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
     let tmp = path.with_extension(format!("selfshare-tmp-{}", std::process::id()));
     {
-        let mut f = fs::File::create(&tmp)?;
-        f.write_all(data)?;
-        f.sync_all()?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            let mut f = fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .mode(0o600)
+                .open(&tmp)?;
+            f.write_all(data)?;
+            f.sync_all()?;
+        }
+        #[cfg(not(unix))]
+        {
+            let mut f = fs::File::create(&tmp)?;
+            f.write_all(data)?;
+            f.sync_all()?;
+        }
     }
     fs::rename(&tmp, path).map_err(|e| {
         let _ = fs::remove_file(&tmp);
@@ -314,6 +332,21 @@ pub fn validate_mount_name(name: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    // §5.4-4 回归：含令牌的落盘文件（config.json / registry.json 走 atomic_write）
+    // 在 Unix 上必须 0600。Windows 走 ACL 无此语义，测试仅限 unix 编译。
+    #[cfg(unix)]
+    #[test]
+    fn atomic_write_sets_owner_only_mode_on_unix() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("ss-mode-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.json");
+        atomic_write(&path, b"{\"token\":\"secret\"}").unwrap();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "atomic_write 落盘必须为 0600，实际 {:o}", mode);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     use super::*;
 
     #[test]
