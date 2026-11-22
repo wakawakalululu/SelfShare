@@ -22,7 +22,7 @@ import (
 )
 
 // 发行版本；注意与 HTTP 层的 ServiceVersion（协议版本）区分。
-const serverVersion = "2.1.2"
+const serverVersion = "2.1.3"
 
 // banner 首行与 Python 服务端逐字一致，方便部署脚本按同一标记判定就绪。
 const banner = `SelfShare server listening on %s

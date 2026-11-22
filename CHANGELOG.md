@@ -44,11 +44,37 @@
 - **O-4 分析复核（`LOOP-20261123-01`，不动裁决）**：三端引用全景排查（Go `registry.go::sealKey` env 优先 / Python `_key()` 不读 env / Rust·Dart 零引用）+「支持/移除」两方案影响面与建议（维持 ADR-002；若需演进选「支持」兼容性优先），已追加至 `docs/decisions/OPEN-DECISIONS.md` O-4 分析记录。
 - **§0.3.1 下一阶段提案（`LOOP-20261123-01`，待用户裁决）**：P2P 可观测性（R11 余量）、文档站/wiki 口径刷新、`bench_ab` 常态化、真实部署 `scan_vault_db` 采集指引、发版流程余量收敛（PAT 切 tag 自动触发 release.yml 与手动 dispatch 双跑）、semver 口径立此存照（功能进 minor，下一功能版 = v2.1.0）。见 PROJECT_STATUS §0.3.1。
 
-测试口径：Python 33 例（sync 22 / p2p 6 / pairing 5）+ 可选 DLL 冒烟 9 例、Rust 27 例（lib 内联 13 + 集成 14；历史 18 例）、Go 24 例（历史 20 例）、Tauri `engine_state` 9 例、Flutter 桥接冒烟 8 例（flutter test，CI）。
+测试口径：Python 33 例（sync 22 / p2p 6 / pairing 5）+ 可选 DLL 冒烟 9 例、Rust 28 例（lib 内联 14 + 集成 14；历史 18 例）、Go 24 例（历史 20 例）、Tauri `engine_state` 9 例、Flutter 桥接冒烟 8 例（flutter test，CI）。
 
 ---
 
-# [v2.1.2] — 2026-11-23
+# [v2.1.3] — 2026-11-23
+
+发布日期：2026-11-23
+发布范围：Rust 客户端数据安全补丁——**scan_dir 严格化（防误删传播）+ 手动同步/后台巡检互斥**（上轮多 agent 审计立项的两项同步语义修复，`LOOP-20261123-07`）。Go 服务端与 v1 便携包按既定 release 流程重打（服务端代码与 v2.1.2 相同，仅版本号随版推进）。semver：补丁位只收修复。
+协议兼容：HTTP `ServiceVersion` 保持 `1.0`，磁盘数据格式与 C4 合并语义不变。
+
+## 内核与客户端（Rust）
+
+- **scan_dir 严格化（数据安全）**：`util.rs` 重构出 `scan_dir_strict`——任何 read_dir/metadata 失败显式报错。同步规划（plan/sync）切换到严格版：SMB/网络盘瞬时不可读的子树此前被静默跳过 → 文件从本地清单消失 → 引擎判「本地已删」→ **DeleteRemote 误删远端并传播到其它主机**；现在此类扫描失败会中止本次同步并报错，绝不误判删除。容错版保留给 peer 文件列表（非数据安全场景）。新增回归测试 `scan_dir_strict_reports_unreadable_subdir`（chmod-000 子目录必须报错）。
+- **watcher 快照严格化**：变更检测的快照扫描失败时按「本轮无变化」跳过（on_message 记录），同步后的快照失败保留旧快照（下轮重检）——绝不把扫描失败当成删除信号。
+- **手动同步 / 后台巡检互斥**：`WatchHandle` 增加 syncing 标志（run_once 包络），`sync_once` 在 watcher 同步进行中拒绝手动触发——修复手动同步与后台巡检对同一 mount 并发双跑导致的 state.json 丢更新与重复冲突副本。新增契约测试 `sync_once_not_blocked_by_mutex_after_watch_stopped`（监控停止后互斥不复位误伤）。
+- **syncing 泄漏修复**：`sync_once` 的 syncing 集合改用 Drop 守卫（`SyncingGuard`）——错误/panic/future 取消的任何退出路径都保证移除，修复状态卡「同步中」直至重启的泄漏。
+
+## 验证
+
+| 项目 | 结果 |
+| --- | --- |
+| GitHub Actions `ci.yml`（rust 双平台：cargo test --release 全量含 scan_dir_strict/0600/percent_decode 回归；v2-client 四步 + `engine_state` 10 例） | 全绿 |
+| GitHub Actions `ci-v2.yml` v2-client（`npm run build` + `cargo check --all-targets` + `engine_state`） | 全绿 |
+| Tauri Windows 安装包（NSIS，版本 2.1.3） | 流水线构建 + Windows 本机静默安装启动验证（截图证据） |
+| `release.yml` 资产校验（2 zip + 5 二进制 + 1 NSIS，非空 + 集合互斥） | 流水线内建 |
+
+## 升级说明
+
+客户端安装包直接覆盖升级；**建议所有使用网络盘（SMB/NFS）的用户升级**（本版修复瞬时不可读导致的误删传播）；服务端无行为变更（v2.1.2 服务端可继续使用），数据目录通用。
+
+
 
 发布日期：2026-11-23
 发布范围：稳健性补丁——多 agent 第二轮审计（Go 服务端深查 / Rust core+客户端深查）抓到的 3 项缺陷修复（`LOOP-20261123-06`）；Go 服务端与 v1 便携包按既定 release 流程重打。semver 口径：补丁位只收修复。

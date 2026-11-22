@@ -3312,7 +3312,7 @@ dependencies = [
 
 [[package]]
 name = "selfshare-client"
-version = "2.1.2"
+version = "2.1.3"
 dependencies = [
  "chrono",
  "dirs 5.0.1",
