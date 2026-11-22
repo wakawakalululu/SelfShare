@@ -169,14 +169,22 @@ where
                     syncing_in_thread.store(true, Ordering::SeqCst);
                     run_once(&folder, peer_id.as_deref(), &mut on_message, &mut on_report);
                     syncing_in_thread.store(false, Ordering::SeqCst);
-                    last = take_snapshot(&folder, &patterns);
+                    // 同步成功后的快照若扫描失败，保留旧快照（下轮重检，安全不误删）
+                    match take_snapshot(&folder, &patterns) {
+                        Ok(snap) => last = snap,
+                        Err(e) => on_message(&format!("同步后快照失败，保留旧快照：{}", e), 0, 0),
+                    }
                     last_full = Instant::now();
                 } else if last_full.elapsed() >= Duration::from_secs(120) {
                     // 无本地变更时也定期巡检，拉取其他主机的更新
                     syncing_in_thread.store(true, Ordering::SeqCst);
                     run_once(&folder, peer_id.as_deref(), &mut on_message, &mut on_report);
                     syncing_in_thread.store(false, Ordering::SeqCst);
-                    last = take_snapshot(&folder, &patterns);
+                    // 同步成功后的快照若扫描失败，保留旧快照（下轮重检，安全不误删）
+                    match take_snapshot(&folder, &patterns) {
+                        Ok(snap) => last = snap,
+                        Err(e) => on_message(&format!("同步后快照失败，保留旧快照：{}", e), 0, 0),
+                    }
                     last_full = Instant::now();
                 }
             }

@@ -271,7 +271,7 @@ fn glob_match(pattern: &str, text: &str) -> bool {
 /// 扫描失败按「本轮无变化」跳过，绝不触发删除）。
 pub fn scan_dir_strict(root: &Path, patterns: &[String]) -> Result<Vec<(String, u64, f64)>, String> {
     let mut errs: Vec<String> = Vec::new();
-    let out = scan_dir_impl(root, patterns, Some(&mut errs))?;
+    let out = scan_dir_impl(root, patterns, Some(&mut errs)).map_err(|e| e.to_string())?;
     if errs.is_empty() {
         Ok(out)
     } else {
