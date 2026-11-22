@@ -34,10 +34,18 @@
   async function syncMount(name: string) {
     message = `正在同步 ${name} ...`
     try {
-      await invoke('sync_mount', { name })
-      message = `同步完成: ${name}`
+      // D7：sync 失败以 Ok(SyncStatus{state:"error", errors}) 返回（IPC 形状不变），
+      // 必须读取返回状态，否则失败也显示「同步完成」。
+      const status: any = await invoke('sync_mount', { name })
+      if (status && status.state === 'error') {
+        const detail = (status.errors || []).join('; ') || '未知错误'
+        message = `同步失败: ${name} — ${detail}`
+      } else {
+        message = `同步完成: ${name}`
+      }
       await loadMounts()
     } catch (e) {
+      // Err 仅来自挂载查询失败（mount 不存在等），同步失败不走这里。
       message = '同步失败: ' + e
     }
   }
@@ -46,7 +54,15 @@
     message = '正在同步全部文件夹 ...'
     try {
       const res: any[] = await invoke('sync_all_mounts')
-      message = `已处理 ${res.length} 个文件夹`
+      const failed: any[] = res.filter((s: any) => s && s.state === 'error')
+      if (failed.length > 0) {
+        const detail = failed
+          .map((s: any) => `${s.mount_name}: ${(s.errors || []).join('; ') || '未知错误'}`)
+          .join(' | ')
+        message = `同步完成 ${res.length - failed.length}/${res.length} 个，失败 ${failed.length} 个 — ${detail}`
+      } else {
+        message = `同步完成全部 ${res.length} 个文件夹`
+      }
       await loadMounts()
     } catch (e) {
       message = '同步失败: ' + e

@@ -30,10 +30,36 @@
 
 - 文档口径收敛（`LOOP-20261109-08`）：`PROJECT_STATUS.md` §0 成为「当前状态 + 后续路线」的**唯一权威入口**，§1 起明确标为 2026-11-04 历史快照；`AGENTS.md` §6 移除多轮 run 演进史、改为指向该入口；`v2/RELEASE_SUMMARY.md` 的过时「当前状态（2026-11-08）」行改为历史快照声明。不新增文件、不改代码与契约条款。
 - `flutter analyze` 门禁加 `--no-fatal-infos`（`ci.yml` Analyze 步与 `desktop/scripts/build_windows.ps1` 第 2/4 步）：Flutter stable 3.50.0 将 `package:flutter/material.dart` 导入标记为 deprecated info，info 级别不再拦截 CI / 发版（error 与 warning 仍拦截）；LOOP-20261120-02 实证 run `44611255635` 与 `44611482618` 因该环境漂移失败，`ci.yml` 顺带全文件行尾统一为 LF（原 CRLF 曾导致 sed 修改失败）。
+- **D7 / P1 假成功修复（`LOOP-20261122-01`）**：Tauri 客户端仪表盘此前丢弃 `sync_mount` / `sync_all_mounts` 的返回状态，同步失败（IPC 正常返回 `state:"error"` + `errors`）也显示「同步完成」。前端改为读取返回状态：单项显示 `同步失败 — <errors 明细>`，全部同步汇总成功/失败计数与明细；不新增 IPC、不改返回形状。新增 `tests/engine_state.rs::sync_once_surfaces_sync_failure_via_status_state_not_err` 钉死 Rust 侧契约（失败走 `Ok(SyncStatus)` 而非 `Err` 并写入 `get_status` 缓存；mount 不存在仍走 `Err`）。
 
 - Release 去旧留新（`LOOP-20261120-01`）：新增 `.github/workflows/release-hygiene.yml`（`workflow_dispatch` + 本文件 push 触发，幂等可逆），`gh release edit` 将演练发布 `v1.1.0` 转 prerelease、稳定版固定 `--latest`，`get_latest_release` 口径回归稳定版；README 下载说明同步校正。仅改 release 元数据，不删除任何资产。
 
 测试口径：Python 33 例（sync 22 / p2p 6 / pairing 5）+ 可选 DLL 冒烟 9 例、Rust 内核 25 例（历史 18 例）、Go 24 例（历史 20 例）、Tauri `engine_state` 测试。
+
+---
+
+# [v2.0.2] — 2026-11-22
+
+发布日期：2026-11-22
+发布范围：Tauri 客户端补丁版——**D7 / P1 假成功修复**（仪表盘读取 sync IPC 返回状态，失败不再显示「同步完成」）；Go 服务端与 v1 便携包按既定 release 流程重打（服务端代码与 v2.0.1 相同，仅版本号随版推进）。
+协议兼容：HTTP `ServiceVersion` 保持 `1.0`，磁盘数据格式不变；本次为纯客户端行为修复，不涉及协议与存储变更。
+
+## 客户端（Rust + Tauri）
+
+- **D7 修复**：`Dashboard.svelte` 的 `syncMount` / `syncAll` 此前丢弃 `sync_mount` / `sync_all_mounts` 返回的 `SyncStatus`，同步失败（IPC 正常返回 `state:"error"` + `errors`）也显示「同步完成」。现在读取返回状态：单项失败显示 `同步失败 — <errors 明细>`，「立即同步全部」汇总成功/失败计数与逐挂载明细；不新增 IPC、不改返回形状。
+- 新增 `tests/engine_state.rs::sync_once_surfaces_sync_failure_via_status_state_not_err`：钉死 Rust 侧契约（同步失败封装为 `Ok(SyncStatus)` 并写入 `get_status` 缓存；mount 不存在仍走 `Err`），契约一变测试先红。
+
+## 验证
+
+| 项目 | 结果 |
+| --- | --- |
+| GitHub Actions `ci-v2.yml` v2-client（`npm run build` + `cargo check --all-targets` + `cargo test --test engine_state`） | 全绿（D7 提交上实证） |
+| Tauri Windows 安装包（NSIS，版本 2.0.2） | 流水线构建 + Windows 本机静默安装启动验证 |
+| `release.yml` 资产校验（2 zip + 5 二进制 + 1 NSIS，非空 + 集合互斥） | 流水线内建 |
+
+## 升级说明
+
+客户端安装包直接覆盖升级；服务端无行为变更（v2.0.1 服务端可继续使用，二进制仅版本号差异），数据目录通用。
 
 ---
 

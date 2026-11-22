@@ -205,3 +205,49 @@ fn corrupt_settings_falls_back_to_defaults_and_is_observable() {
     assert_eq!(reloaded.sync_interval_secs, 42);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// D7 / P1 契约钉死：`sync_once` 对同步失败（此处为不可达服务端）**不返回 Err**，
+/// 而是返回 `Ok(SyncStatus { state: "error", errors: [..] })` 并写入状态缓存。
+/// 前端（Dashboard）据此读取 `state` / `errors` 展示真实结果——契约一变本测试先红，
+/// 防止「失败却显示同步完成」的假成功回归。
+#[tokio::test]
+async fn sync_once_surfaces_sync_failure_via_status_state_not_err() {
+    let dir = temp_dir("d7-sync-once-error");
+    std::fs::create_dir_all(dir.join("folder")).expect("创建临时文件夹失败");
+    let engine = SyncEngine::new(dir.clone());
+    engine
+        .add_mount(MountConfig {
+            name: "m".to_string(),
+            local_path: dir.join("folder").to_string_lossy().to_string(),
+            // 127.0.0.1:1 立即拒绝连接，不需要任何服务端夹具。
+            server_url: "http://127.0.0.1:1".to_string(),
+            vault_id: "v".to_string(),
+            token: "t".to_string(),
+        })
+        .await
+        .expect("挂载失败");
+
+    // 1) 同步失败不走 Err：状态以数据形式返回（IPC 形状不变，前端可读）。
+    let status = engine
+        .sync_once("m")
+        .await
+        .expect("同步失败应封装为 Ok(SyncStatus)，而非 Err");
+    assert_eq!(status.state, "error", "state 应为 error");
+    assert!(
+        !status.errors.is_empty(),
+        "errors 应包含失败原因，供前端直接展示"
+    );
+    assert_eq!(status.files_synced, 0, "失败时不应上报已同步文件数");
+    assert_eq!(status.mount_name, "m");
+
+    // 2) 失败状态写入缓存：轮询路径 get_status 同样可见（5 秒定时刷新依赖它）。
+    let last = engine.get_status("m").await.expect("get_status 不应失败");
+    assert_eq!(last.state, "error");
+    assert_eq!(last.errors, status.errors);
+    assert_eq!(last.files_synced, 0);
+
+    // 3) 分界不变：mount 不存在仍走 Err（查询型错误 ≠ 同步型错误）。
+    assert!(engine.sync_once("no-such-mount").await.is_err());
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
