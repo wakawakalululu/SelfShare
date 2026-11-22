@@ -9,6 +9,7 @@
 package api
 
 import (
+	"sync"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -47,6 +48,28 @@ func fail(code int, format string, args ...any) *StatusError {
 type Server struct {
 	Registry *store.Registry
 	Quiet    bool
+	// pairStores / peerRegistries：每 vault 一个共享实例（懒创建）。
+	// 此前每请求 New 一份，实例内部互斥锁跨请求无效，paircodes.json 的
+	// Redeem 读-改-写与 peers.json 的 Register 在并发下丢更新（一次性
+	// 配对码可被并发兑换两次）。共享实例后同 vault 操作在其自带锁上串行。
+	pairStores     sync.Map // vaultID -> *store.PairCodeStore
+	peerRegistries sync.Map // vaultID -> *store.PeerRegistry
+}
+
+func (s *Server) pairStore(vaultID string) *store.PairCodeStore {
+	if v, ok := s.pairStores.Load(vaultID); ok {
+		return v.(*store.PairCodeStore)
+	}
+	v, _ := s.pairStores.LoadOrStore(vaultID, store.NewPairCodeStore(s.Registry.VaultPath(vaultID)))
+	return v.(*store.PairCodeStore)
+}
+
+func (s *Server) peerRegistry(vaultID string) *store.PeerRegistry {
+	if v, ok := s.peerRegistries.Load(vaultID); ok {
+		return v.(*store.PeerRegistry)
+	}
+	v, _ := s.peerRegistries.LoadOrStore(vaultID, store.NewPeerRegistry(s.Registry.VaultPath(vaultID)))
+	return v.(*store.PeerRegistry)
 }
 
 func New(root string, quiet bool) (*Server, error) {
@@ -189,7 +212,7 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) error {
 
 	case action == "peers" && r.Method == http.MethodGet:
 		withBlobs := q.Get("with_blobs") == "1" || q.Get("with_blobs") == "true"
-		peers := store.NewPeerRegistry(s.Registry.VaultPath(vaultID)).
+		peers := s.peerRegistry(vaultID).
 			Discover(vaultID, q.Get("exclude"), withBlobs)
 		if peers == nil {
 			peers = []map[string]any{}

@@ -256,14 +256,26 @@ fn parse_query(q: &str) -> BTreeMap<String, String> {
     out
 }
 
+fn hex_digit(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
+    }
+}
+
+/// 查询串百分号解码：纯字节操作（str 切片在 `%` 紧邻多字节 UTF-8 时会
+/// 触发 char-boundary panic，且本函数位于未认证的 /p2p/ping、/p2p/blob
+/// 解析路径上——修复为逐字节十六进制解析，语义不变）。
 fn percent_decode(s: &str) -> String {
     let bytes = s.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(b) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
-                out.push(b);
+            if let (Some(hi), Some(lo)) = (hex_digit(bytes[i + 1]), hex_digit(bytes[i + 2])) {
+                out.push(hi * 16 + lo);
                 i += 3;
                 continue;
             }
@@ -303,4 +315,21 @@ fn constant_eq(a: &str, b: &str) -> bool {
         diff |= x ^ y;
     }
     diff == 0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // 回归：`%` 紧邻多字节 UTF-8 时 str 切片会 panic（char boundary），
+    // 修复后逐字节解析不 panic 且非十六进制序列按字面量保留。
+    #[test]
+    fn percent_decode_handles_multibyte_after_percent() {
+        let q = "%a中"; // % 后跟 'a' + 多字节 '中'：旧实现 &s[1..3] 切到中文字节中间 → panic
+        let out = percent_decode(q); // 只要不 panic 即通过
+        assert!(out.contains("中"));
+        assert_eq!(percent_decode("%41+b"), "A b");
+        assert_eq!(percent_decode("%zz"), "%zz"); // 非十六进制按字面量
+        assert_eq!(percent_decode("a%2Fb"), "a/b");
+    }
 }

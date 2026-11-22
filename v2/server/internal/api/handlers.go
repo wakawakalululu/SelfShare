@@ -1,13 +1,13 @@
 package api
 
 import (
+	"log"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -37,8 +37,7 @@ func (s *Server) handlePair(w http.ResponseWriter, r *http.Request) error {
 		return fail(400, "code is required")
 	}
 	for _, vaultID := range s.Registry.ListVaults() {
-		pairFile := filepath.Join(s.Registry.VaultPath(vaultID), "paircodes.json")
-		_, note, ok := store.NewPairCodeStore(filepath.Dir(pairFile)).Redeem(req.Code)
+		_, note, ok := s.pairStore(vaultID).Redeem(req.Code)
 		if !ok {
 			continue
 		}
@@ -111,7 +110,10 @@ func (s *Server) handleBlobBulk(w http.ResponseWriter, r *http.Request, v *store
 			continue
 		}
 		if _, perr := v.PutBlobBytes(data); perr != nil {
-			failed = append(failed, failure{digest, perr.Error()})
+			// 不回传原始错误：*os.PathError 含服务器绝对磁盘路径，认证客户端可见即泄露面；
+			// 细节写 stderr（与 writeError 500 分支同一口径），客户端拿分类消息。
+			log.Printf("blobbulk store %s failed: %v", digest, perr)
+			failed = append(failed, failure{digest, "blob write failed"})
 			continue
 		}
 		stored = append(stored, digest)
@@ -220,7 +222,7 @@ func (s *Server) handlePeer(w http.ResponseWriter, r *http.Request,
 	if req == nil {
 		req = map[string]any{}
 	}
-	preg := store.NewPeerRegistry(s.Registry.VaultPath(vaultID))
+	preg := s.peerRegistry(vaultID)
 	switch sub {
 	case "register":
 		blobs := asStrings(req["blobs"])
