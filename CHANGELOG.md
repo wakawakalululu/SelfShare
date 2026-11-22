@@ -48,7 +48,31 @@
 
 ---
 
-# [v2.0.4] — 2026-11-22
+# [v2.1.0] — 2026-11-23
+
+发布日期：2026-11-23
+发布范围：Tauri 客户端功能版——**P2P 可观测性（R11 余量，§0.3.1 提案 A 经用户裁决立项）**；Go 服务端与 v1 便携包按既定 release 流程重打（服务端代码与 v2.0.4 相同，仅版本号随版推进）。**本版起 semver 口径生效：功能进 minor**。
+协议兼容：HTTP `ServiceVersion` 保持 `1.0`，磁盘数据格式不变；新增一条只读 Tauri IPC `p2p_status`，不触 C5 C ABI 形状，P2P 认证（C6 §3）不变。
+
+## 客户端（Rust + Tauri）
+
+- **P2P 可观测性**：新增只读 IPC `p2p_status`（`P2pStatus{mount_name, enabled, watching, node, peers}`）——内核 `watcher.rs` 在 `PeerServer::start` 成功后把本机节点（peer_id + 监听地址）写入 `WatchHandle` 共享槽（`peer_node()`），引擎聚合设置开关 / 监控状态 / 本机节点 / 中心发现列表；设备页在本机节点行展示「运行中（监听地址）/ 未启动（原因）/ 未运行」。中心不可达时发现列表以空表达，不折叠成 Err（与内核回退容错口径一致）。默认关闭语义不变（O-2）；数据面（拉取/服务）不变。
+- 新增契约测试 `tests/engine_state.rs::p2p_status_reports_complete_shape_without_node_when_disabled`（开关关闭 + 无监控 + 中心不可达的最简环境下快照形状完整且不虚报节点；mount 不存在仍 Err）。
+
+## 验证
+
+| 项目 | 结果 |
+| --- | --- |
+| GitHub Actions `ci.yml`（v2-client：vite 构建 + 静态扫描 + `cargo check --all-targets` + `engine_state` 含新契约测试；Rust 双平台矩阵） | 全绿（P2P 可观测性提交上实证） |
+| GitHub Actions `ci-v2.yml` v2-client（`npm run build` + `cargo check --all-targets` + `engine_state`） | 全绿 |
+| Tauri Windows 安装包（NSIS，版本 2.1.0） | 流水线构建 + Windows 本机静默安装启动验证（截图证据） |
+| `release.yml` 资产校验（2 zip + 5 二进制 + 1 NSIS，非空 + 集合互斥） | 流水线内建 |
+
+## 升级说明
+
+客户端安装包直接覆盖升级；服务端无行为变更（v2.0.4 服务端可继续使用，二进制仅版本号差异），数据目录通用。P2P 仍默认关闭（设置页开启，限局域网）。
+
+
 
 发布日期：2026-11-22
 发布范围：Tauri 客户端功能版——**R5 / P2P 数据面接通**（`enable_p2p` 开关驱动的手动同步 peer 优先拉取 + 中心回退）；随版携带已入库的 **flutter 桥接冒烟门禁**；Go 服务端与 v1 便携包按既定 release 流程重打（服务端代码与 v2.0.3 相同，仅版本号随版推进）。

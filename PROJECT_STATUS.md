@@ -2,7 +2,7 @@
 
 > **本文 §0 是当前状态与后续路线的唯一权威入口**；§1 起为 2026-11-04 基线（`42d6764`）的历史盘点快照，R1–R12 已全部闭环，**不再作为当前口径维护**。
 > 仓库：`wakawakalululu/SelfShare`；基线：`master` == `origin/master`（2026-11-22 刷新，见 §0.2）
-> 发布：稳定版 **`v2.0.4`**（8 资产，latest，R5 P2P 数据面随版）；`v2.0.3`（O-2/O-3 轻量 UI）、`v2.0.2`（D7）、`v2.0.1` 补丁版存档；演练 `v1.1.0` 已转 prerelease（保留不删除，`release-hygiene.yml` 幂等固定 latest 口径）
+> 发布：稳定版 **`v2.1.0`**（8 资产，latest，P2P 可观测性随版，**semver 口径生效：功能进 minor**）；`v2.0.4`（R5 P2P 数据面）、`v2.0.3`（O-2/O-3 UI）、`v2.0.2`（D7）、`v2.0.1` 补丁版存档；演练 `v1.1.0` 已转 prerelease（保留不删除，`release-hygiene.yml` 幂等固定 latest 口径）
 > 验证基线：L1 33 / L4 28 / DLL 冒烟 9 / Rust 25+1（D7 契约） / Go 24 / ABI 四方 19；ci.yml、ci-v2.yml、build-test-deploy、release.yml、release-hygiene.yml、cut-release.yml 六条流水线全绿实证
 > 维护约定：阶段性交付后只更新本文 §0 与 `CHANGELOG.md [Unreleased]`；`AGENTS.md` 只留规范与门禁、不放演进史；过程性记录归 `.codebuddy/skills/软件开发专家团/memory/`（不入库）
 
@@ -26,9 +26,9 @@
 
 | 维度 | 事实 |
 | --- | --- |
-| 代码 | 2026-11-22 刷新：C4-1（`1c4a5fd`）已随 `v2.0.1` 发布；**D7 / P1 假成功已修复**（`LOOP-20261122-01`）；**P2 断言加固已闭环**（`LOOP-20261122-03`）；**O-2/O-3 轻量 UI 已落地**（随 `v2.0.3` 发布）；**Flutter 桥接冒烟 8 例入 gui 门禁**（`LOOP-20261122-05`）；**R5 P2P 数据面已接通**（手动同步按 `enable_p2p` 开关走 peer 优先 + 中心回退，随 `v2.0.4` 发布，`LOOP-20261122-06`） |
+| 代码 | 2026-11-23 刷新：**P2P 可观测性已落地**（只读 `p2p_status` IPC + 设备页本机节点状态，随 `v2.1.0` 发布，`LOOP-20261123-02`）；此前 2026-11-22：C4-1（`1c4a5fd`）已随 `v2.0.1` 发布；**D7 / P1 假成功已修复**（`LOOP-20261122-01`）；**P2 断言加固已闭环**（`LOOP-20261122-03`）；**O-2/O-3 轻量 UI 已落地**（随 `v2.0.3` 发布）；**Flutter 桥接冒烟 8 例入 gui 门禁**（`LOOP-20261122-05`）；**R5 P2P 数据面已接通**（手动同步按 `enable_p2p` 开关走 peer 优先 + 中心回退，随 `v2.0.4` 发布，`LOOP-20261122-06`） |
 | 契约 | C3 rel 键规范化、C4 合并语义、C5 ABI/IPC 形状（冻结）、C6 路径 containment 均已落盘；O-1~O-3 已裁决（O-2/O-3 的 UI 增量已实现），O-5/O-6 维持冻结 |
-| 发布 | **`v2.0.4` 8 资产稳定版（latest）**；`v2.0.3`（O-2/O-3）、`v2.0.2`（D7）、`v2.0.1`（C4-1）与 `v2.0.0` 存档；`release-hygiene.yml` 幂等固定 latest=最新补丁版；演练 `v1.1.0` 已转 prerelease |
+| 发布 | **`v2.1.0` 8 资产稳定版（latest）**；`v2.0.4`（R5 P2P 数据面）、`v2.0.3`（O-2/O-3）、`v2.0.2`（D7）、`v2.0.1`（C4-1）与 `v2.0.0` 存档；`release-hygiene.yml` 幂等固定 latest=最新补丁版；演练 `v1.1.0` 已转 prerelease |
 | 验证 | 上述历史基线继续有效；新增：Python 50 例对 release 二进制回归（v2.0.0 49/50 → v2.0.1 起 50/50）、ci-v2 9/9（含 Tauri Windows 构建）、release 8 资产端到端、hygiene 断言、WSL 服务端 + Windows GUI 本机联调（截图证据）；O-2/O-3 接线静态扫描门禁 + 5 例自测、Flutter 桥接冒烟 8 例入 ci.yml |
 | 遗留 | §0.3 路线图 P1/P2/P3 全部闭环（2026-11-22）；仅余环境受限余量（darwin / linux-arm64 实机与真一次性 VM 安装，须硬件）。无 P0/P1/P2 未闭环项；新增工作按「一次迭代一个目标」在 §0.3 增行 |
 
@@ -44,6 +44,7 @@
 | ~~P2~~ | ~~断言加固~~ ✅ 已闭环（`LOOP-20261122-03`） | `integration.rs` 的 `ss_progress` 子串断言改 `serde_json` 反序列化进 `ProgressSnapshot`（形状改动显式失败，不再静默假通过）；`ProgressSnapshot` 补 `Deserialize`（纯增量，C ABI JSON 不变） | `cargo test --release --test integration`（ci.yml rust job 双平台全绿） |
 | ~~P2~~ | ~~隔离环境冒烟~~ ✅ 可达子项已闭环（`LOOP-20261122-07`） | NSIS 真实安装 + GUI 窗口（v2.0.3 / v2.0.4 两轮静默安装，截图证据）；并发基准（v2.0.4 release 二进制：8 MiB / 16 并发 0.096 s = **83.49 MB/s**，32/32 上传 + 32/32 回读一致，`bench_upload.py`）；非 Windows 产物实机（linux-amd64 64 例回归 + Windows 原生 `--version`=2.0.4）。**环境受限余量**：darwin / linux-arm64 实机（无 macOS、无 qemu）、真一次性 VM 安装（当前为既有 Windows 宿主）——须硬件，非代码缺口 | `python v2/scripts/bench_upload.py --server <release 二进制>`、Windows 原生执行 |
 | ~~P3~~ | ~~工程债~~ ✅ 已闭环（`LOOP-20261122-07`） | ① `abi-ipc.md` 行号近似引用全部改符号/小节锚点（ffi.rs::ok_json 等；h 文件清单锚点保留，由 `check_abi_names.py` 机械锁定），并修正已过时的「integration.rs 子串断言」描述（现为反序列化断言）；② CI 重复收敛：`build-test-deploy.yml` 移除与 ci-v2 `server-test` / `compat`、ci.yml `python` 重复的 test-server / test-python 两 job，收敛为「构建 + 发布 + 部署」链路（Docker 冒烟保留为发布前置门）；③ CHANGELOG 历史锚点统一（v1.x 段 `# v1.3.0 发布说明` → `# [v1.3.0]` 等，8 个版本锚点 awk 提取全部非空） | 全文检索（行号引用清零、job 引用无残留）+ CI 时长对比（btd 收敛前后） |
+| ~~提案P2~~ | ~~P2P 可观测性（R11 余量）~~ ✅ 已闭环（`LOOP-20261123-02`，随 `v2.1.0` 发布） | 只读 `p2p_status` IPC（`enabled/watching/node/peers` 快照，中心不可达以空列表容错）；内核 `WatchHandle::peer_node()` 暴露本机节点（peer_id + 监听地址）；设备页新增本机节点状态行；`engine_state` 新契约测试钉死「关闭时不虚报节点」 | `cargo test --test engine_state`、`cargo check --all-targets`（ci/ci-v2 双绿） |
 
 > 说明：O-5（C ABI 形状 v2 统一）与 O-6（盘符语义统一）**不列入实施路线**——均属不可兼容 v2 变更，按红线维持冻结；若立项须先明确大版本、存量库扫描、三端同步与 L3/L4 实证。
 
@@ -53,7 +54,7 @@
 
 | 提案优先级 | 项 | 内容与动机 | 验收命令 / 证据 |
 | --- | --- | --- | --- |
-| 提案 P2 | v2 客户端 P2P 可观测性（R11 余量） | 后台监控已按 `enable_p2p` 起本机节点并注册（watcher），但节点状态 / 监听地址 / 已注册 peer 只在 watcher 内部消息里，前端不可查。新增 `p2p_status` IPC（只读），设备页展示本机节点与在线 peer；手动同步不自起节点的行为保持 | `npm run build` + `cargo check --all-targets` + `engine_state` 新契约测试 |
+| ~~提案 P2~~ | ~~v2 客户端 P2P 可观测性~~ ✅ **已裁决立项并上移 §0.3 正式表**（2026-11-23，随 `v2.1.0` 发布） | 后台监控已按 `enable_p2p` 起本机节点并注册（watcher），但节点状态 / 监听地址 / 已注册 peer 只在 watcher 内部消息里，前端不可查。新增 `p2p_status` IPC（只读），设备页展示本机节点与在线 peer；手动同步不自起节点的行为保持 | `npm run build` + `cargo check --all-targets` + `engine_state` 新契约测试 |
 | 提案 P2 | 文档站 / wiki 口径刷新 | `docs/`（Jekyll）与 `.github/wiki/` 仍含 pre-v2.0.x 口径（latest 版本号、P2P 说明、自托管部署）；全文检索 + 逐页刷新到 v2.0.4 事实（latest、enable_p2p 语义、NSIS 安装） | 全文检索（旧口径清零）+ pages.yml 绿 |
 | 提案 P3 | `bench_ab` 常态化 | 现 A/B 基准仅手动运行；新增 `workflow_dispatch`（不进 push 门禁，AGENTS §5.7 不作 SLA）周期采集吞吐数据落 artifact，为性能回归提供纵向样本 | workflow_dispatch 实跑 + artifact 非空 |
 | 提案 P3 | 真实部署环境 `scan_vault_db` 采集指引 | O-1/O-6 立项仍缺真实部署数据；产出 runbook（`--json` 汇总格式、--immutable 用法、脱敏要求）+ 可选 `workflow_dispatch` 采集模板；数据到位后再裁决 O-1/O-6 | runbook 评审 + 采集样例 |
