@@ -49,4 +49,4 @@ python3 desktop/scripts/scan_vault_db.py --immutable --json /path/to/vault.db > 
 
 - 数据累计到一定规模后回填 `docs/decisions/OPEN-DECISIONS.md` O-1 / O-6 的「现状」小节；
 - 全部 clean → 维持冻结不动；发现盘符段/空白异常 → 触发 O-1/O-6 裁决流程（走 D 轨道 +
-  三端同步 + L3/L4 实证，见 §0.3 说明）。
+  三端同步 + L3/L4 实证，见 `PROJECT_STATUS.md` §0.3 说明）。

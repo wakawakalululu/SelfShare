@@ -79,8 +79,8 @@ Rust `integration.rs` 反序列化断言显式失败（`LOOP-20261122-03` 起反
 `selfshare_core.h`（19 个 `ss_*` 声明块）、`rust_bridge.dart`（FFI 绑定区）、
 `test_core_dll.py`（`ABI_SYMBOLS` 清单）、`desktop/README.md`（ABI 小节）、
 `docs/gui.md`（ABI 小节）。
-`ss_find_mount` 已有头文件与 `ffi.rs` 实现、但缺 Dart 绑定，属**补绑定**而非新增 ABI，
-按 `requirement-card.md` §8 单独排期。
+`ss_find_mount` 的 Dart 绑定已补齐（`rust_bridge.dart::findMount` / `tryFindMount`），
+头文件 / `ffi.rs` / Dart 三处就位并受 `check_abi_names.py` 四方一致性门禁覆盖；本条仅作同步面记录保留。
 
 ## 验收门禁
 
@@ -88,6 +88,6 @@ Rust `integration.rs` 反序列化断言显式失败（`LOOP-20261122-03` 起反
 | --- | --- | --- |
 | L1 | `SELFSHARE_CORE_DLL=<dll> python tests/test_core_dll.py -v`（9 例） | `ci.yml core-dll-smoke` 已覆盖（run `42474993786` 实证 success，当时 6 例）；同 job 另执行 `desktop/scripts/check_abi_names.py` 四方名称检查（含 `ffi.rs` Rust 导出） |
 | L2 | `cargo test --lib` / `cargo test --release --test integration` | `ci.yml rust` job；`ffi_pair_failure_resets_progress`（反序列化断言口径）在 run `45015441338`（LOOP-20261122-05 轮，ubuntu+windows 双平台）success |
-| L5 | `cargo test --test engine_state`（8 个测试函数：settings_roundtrip / pause_resume_and_tray_state / pause_twice_then_resume_restarts_watchers / restore_keeps_local_unsynced_edit / settings_atomic_roundtrip / corrupt_settings_falls_back / D7 契约 / R5 P2P 接线） | `ci.yml v2-client`；run `45016584144`（LOOP-20261122-06 轮）success |
+| L5 | `cargo test --test engine_state`（9 个测试函数：settings_roundtrip / pause_resume_and_tray_state / pause_twice_then_resume_restarts_watchers / restore_keeps_local_unsynced_edit / settings_atomic_roundtrip / corrupt_settings_falls_back / D7 契约 / R5 P2P 接线 / R11 P2P 可观测性） | `ci.yml v2-client`；run `45037596679`（LOOP-20261123-02 轮，R11 测试首钉）success |
 
 本文件为契约文本，不引入新的运行门禁；上述 job 状态引用自对应轮次的真实 run（2026-11-08 首钉，2026-11-22 刷新）。
