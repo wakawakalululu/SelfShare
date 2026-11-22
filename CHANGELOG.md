@@ -40,6 +40,34 @@
 
 ---
 
+# [v2.0.3] — 2026-11-22
+
+发布日期：2026-11-22
+发布范围：Tauri 客户端功能版——**O-2 / O-3 轻量 UI**（设置页首次进入一次性提示；>512 MiB 大文件同步提示与预期时间估算）；随版携带已入库的 **P2 断言加固**（`ss_progress` 反序列化断言）与 **存量库只读扫描工具**；Go 服务端与 v1 便携包按既定 release 流程重打（服务端代码与 v2.0.2 相同，仅版本号随版推进）。
+协议兼容：HTTP `ServiceVersion` 保持 `1.0`，磁盘数据格式不变；本次为纯客户端增量（新增一条 Tauri IPC 命令 `list_large_files`，只读本地文件系统，不触 C5 C ABI 形状），不涉及协议与存储变更。
+
+## 客户端（Rust + Tauri）
+
+- **O-2 设置页首次进入一次性提示**（裁决保持 P2P 默认关闭）：`Settings.svelte` 首次进入展示一次性提示（localStorage 标记 `ss_settings_first_visit_hint_shown`，仅显示一次，可手动关闭；localStorage 不可用时静默跳过），内容覆盖 P2P 默认关闭口径、单文件 2 GiB 上限、巡检间隔生效方式。
+- **O-3 >512 MiB 大文件提示**：新增 Tauri 命令 `list_large_files`（commands.rs，只读遍历挂载本地目录，>512 MiB 阈值常量 `LARGE_FILE_THRESHOLD`；取到挂载路径即释放引擎锁）；`Dashboard.svelte` 每挂载首次加载时扫描一次（不随 5 秒轮询重复执行）+「查大文件」手动重查，命中时按文件列出大小并给出**预期时间估算**（按实测基准保守 ~10 MB/s，标注为估算；>512 MiB 改动即整体重传）。
+- **P2 断言加固随版**：`integration.rs::ffi_pair_failure_resets_progress` 对 `ss_progress` 快照的断言改为 serde_json 反序列化进 `ProgressSnapshot`（形状改动显式失败，不再静默假通过）；`ProgressSnapshot` 补 `serde::Deserialize`（纯增量，C ABI JSON 不变）。
+- 新增 O-2/O-3 接线静态扫描门禁：`desktop/scripts/check_v2_ui_hints.py`（11 项标记）+ `tests/test_check_v2_ui_hints.py`（5 例自测含篡改负例），接入 ci.yml v2-client 步骤与 python job self-tests 步骤。
+
+## 验证
+
+| 项目 | 结果 |
+| --- | --- |
+| GitHub Actions `ci.yml`（v2-client：vite 构建 + 静态扫描 + `cargo check --all-targets` + `engine_state`；python 矩阵 + self-tests） | 全绿（O-2/O-3 提交上实证） |
+| GitHub Actions `ci-v2.yml` v2-client（`npm run build` + `cargo check --all-targets` + `engine_state`） | 全绿 |
+| Tauri Windows 安装包（NSIS，版本 2.0.3） | 流水线构建 + Windows 本机静默安装启动验证（截图证据） |
+| `release.yml` 资产校验（2 zip + 5 二进制 + 1 NSIS，非空 + 集合互斥） | 流水线内建 |
+
+## 升级说明
+
+客户端安装包直接覆盖升级；服务端无行为变更（v2.0.2 服务端可继续使用，二进制仅版本号差异），数据目录通用。
+
+---
+
 # [v2.0.2] — 2026-11-22
 
 发布日期：2026-11-22
