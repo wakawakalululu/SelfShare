@@ -22,7 +22,9 @@ use crate::watcher::WatchHandle;
 // --------------------------------------------------------------------------- //
 // 全局运行时
 // --------------------------------------------------------------------------- //
-#[derive(Serialize, Clone, Default)]
+// Deserialize 仅供测试/工具侧把 ss_progress 返回的 JSON 反序列化回结构体，
+// 以钉死快照形状；序列化输出（C ABI 线上的 JSON）不变。
+#[derive(Serialize, serde::Deserialize, Clone, Default)]
 pub struct ProgressSnapshot {
     pub state: String,       // idle | scanning | syncing | paused | error
     pub message: String,

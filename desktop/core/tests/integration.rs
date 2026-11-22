@@ -379,21 +379,30 @@ fn ffi_pair_failure_resets_progress() {
         assert!(msg.contains("\"ok\":false"), "配对失败应返回错误 JSON：{}", msg);
 
         // 紧接着读取全局进度快照：失败路径不得遗留 syncing，且必须写入错误信息与文本。
+        // 断言走 serde_json 反序列化而非子串匹配：进度 JSON 形状一旦改动（字段改名/
+        // 缺失/类型变化），反序列化在此显式失败，不会静默假通过。
         let snap = selfshare_core::ffi::ss_progress();
         let text = CStr::from_ptr(snap).to_str().unwrap().to_string();
         selfshare_core::ffi::ss_free(snap);
-        assert!(
-            !text.contains("\"state\":\"syncing\""),
+        let parsed: selfshare_core::ffi::ProgressSnapshot = serde_json::from_str(&text)
+            .unwrap_or_else(|e| panic!("ss_progress 必须返回可反序列化的进度快照：{} / {}", e, text));
+        assert_ne!(
+            parsed.state, "syncing",
             "失败后不得停留在 syncing：{}",
             text
         );
-        assert!(
-            text.contains("\"last_error\":") && !text.contains("\"last_error\":null"),
-            "失败后必须写入 last_error：{}",
+        assert_eq!(
+            parsed.state, "error",
+            "配对失败后 state 应复位为 error：{}",
             text
         );
         assert!(
-            !text.contains("\"message\":\"\""),
+            parsed.last_error.as_deref().map_or(false, |s| !s.is_empty()),
+            "失败后必须写入非空 last_error：{}",
+            text
+        );
+        assert!(
+            !parsed.message.is_empty(),
             "失败后 message 应给出可观测文本：{}",
             text
         );
