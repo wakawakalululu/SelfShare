@@ -154,6 +154,7 @@ func (s *Server) handleGetBlob(w http.ResponseWriter, r *http.Request, v *store.
 	}
 	total := st.Size()
 	var start, end int64 = 0, total - 1
+	rangeHeader := r.Header.Get("Range")
 if strings.HasPrefix(rangeHeader, "bytes=") {
 	// 416 仅在显式带 Range 头时判定：空文件（total=0）无 Range 的普通
 	// GET/HEAD 必须返回 200 空体——此前无条件检查导致空文件永久无法 pull
