@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "adler2"
-version = "2.0.1"
+version = "2.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
@@ -3312,7 +3312,7 @@ dependencies = [
 
 [[package]]
 name = "selfshare-client"
-version = "2.0.0"
+version = "2.0.2"
 dependencies = [
  "chrono",
  "dirs 5.0.1",
@@ -3539,7 +3539,7 @@ dependencies = [
 
 [[package]]
 name = "shlex"
-version = "2.0.1"
+version = "2.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 

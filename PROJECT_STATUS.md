@@ -1,9 +1,9 @@
-# 项目状态与后续路线｜2026-11-09（单一事实源）
+# 项目状态与后续路线｜2026-11-22（单一事实源）
 
 > **本文 §0 是当前状态与后续路线的唯一权威入口**；§1 起为 2026-11-04 基线（`42d6764`）的历史盘点快照，R1–R12 已全部闭环，**不再作为当前口径维护**。
-> 仓库：`wakawakalululu/SelfShare`；基线：`master` == `origin/master` @ `315cb20`，工作区干净
-> 发布：稳定版 `v2.0.0`（7 资产）；`get_latest_release` = 演练发布 `v1.1.0`（8 资产，用户决定**保留不删除**）；下载稳定版须显式指定 `v2.0.0`
-> 验证基线：L1 33 / L4 28 / DLL 冒烟 9 / Rust 25 / Go 24 / ABI 四方 19；4 条 push 流水线与 `release.yml` 正向演练全绿
+> 仓库：`wakawakalululu/SelfShare`；基线：`master` == `origin/master`（2026-11-22 刷新，见 §0.2）
+> 发布：稳定版 **`v2.0.2`**（8 资产，latest）；`v2.0.1` 补丁版（C4-1 随版）；演练 `v1.1.0` 已转 prerelease（保留不删除，`release-hygiene.yml` 幂等固定 latest 口径）
+> 验证基线：L1 33 / L4 28 / DLL 冒烟 9 / Rust 25+1（D7 契约） / Go 24 / ABI 四方 19；ci.yml、ci-v2.yml、build-test-deploy、release.yml、release-hygiene.yml、cut-release.yml 六条流水线全绿实证
 > 维护约定：阶段性交付后只更新本文 §0 与 `CHANGELOG.md [Unreleased]`；`AGENTS.md` 只留规范与门禁、不放演进史；过程性记录归 `.codebuddy/skills/软件开发专家团/memory/`（不入库）
 
 ---
@@ -26,17 +26,17 @@
 
 | 维度 | 事实 |
 | --- | --- |
-| 代码 | `315cb20`；D6 / C4-1 纵深防御缺口已修复（Python + Go 两端判据收敛，正常删除回归全绿） |
+| 代码 | 2026-11-22 刷新：C4-1（`1c4a5fd`）已随 `v2.0.1` 发布；**D7 / P1 假成功已修复**（Dashboard 读取 sync IPC 返回状态 + `engine_state` 契约钉死，`LOOP-20261122-01`） |
 | 契约 | C3 rel 键规范化、C4 合并语义、C5 ABI/IPC 形状（冻结）、C6 路径 containment 均已落盘；O-1~O-3 已裁决，O-5/O-6 维持冻结 |
-| 发布 | `v2.0.0` 7 资产稳定版不变；演练 `v1.1.0` 8 资产已由正向演练覆盖产物、保留不删除 |
-| 验证 | L1 33/33、L4 28/28（新编译 Go 二进制）、DLL 9/9、Go race、Rust lib/integration、HTTPS 冒烟、Release 8 资产端到端均有实证 |
-| 遗留 | D7（P1 UI 假成功）与下列 P1/P2 项；无 P0 未闭环项 |
+| 发布 | **`v2.0.2` 8 资产稳定版（latest）**；`v2.0.1`（C4-1 随版）与 `v2.0.0` 存档；`release-hygiene.yml` 幂等固定 latest=最新补丁版；演练 `v1.1.0` 已转 prerelease |
+| 验证 | 上述历史基线继续有效；新增：Python 50 例对 release 二进制回归（v2.0.0 49/50 → v2.0.1 起 50/50）、ci-v2 9/9（含 Tauri Windows 构建）、release 8 资产端到端、hygiene 断言、WSL 服务端 + Windows GUI 本机联调（截图证据） |
+| 遗留 | §0.3 所列 P1/P2 项；无 P0 未闭环项 |
 
 ### 0.3 后续路线（按优先级，一次迭代一个目标）
 
 | 优先级 | 项 | 内容 | 验收命令 |
 | --- | --- | --- | --- |
-| **P1** | **D7** | `sync_once` 把 `Err` 转 `SyncStatus{errors}` 后恒 `Ok`，前端丢弃返回值 → 失败却显示「同步完成」。修错误传播 + 前端状态显示；不新增 IPC、不改返回形状 | `cargo test --test engine_state`、`npm run build`、L4 28 例 |
+| ~~P1~~ | ~~D7~~ ✅ 已闭环（`LOOP-20261122-01`） | Dashboard 读取 sync IPC 返回状态，失败显示明细；`engine_state` 新增契约钉死测试 | `cargo test --test engine_state`、`npm run build`（ci-v2 v2-client 全绿） |
 | P1 | 存量库只读扫描 | 部署环境只读扫 `vault.db` 的 `files.rel`（首尾空白 / 盘符），作为 O-1/O-6 未来是否立项的依据（本机 `*.db` 数量 0） | 只读 SQL + 结论记录 |
 | P2 | O-2 / O-3 轻量 UI | 设置页首次进入一次性提示；>512 MiB 文件进度提示 | `npm run build` + 静态扫描 |
 | P2 | `flutter test` 冒烟 | `desktop/app/test/` 桥接层冒烟接入 `ci.yml gui`（`ss_find_mount` 无自然业务调用点，不硬接线） | `flutter test`（CI） |
