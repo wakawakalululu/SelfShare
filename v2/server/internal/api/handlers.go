@@ -1,13 +1,13 @@
 package api
 
 import (
-	"log"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -37,7 +37,8 @@ func (s *Server) handlePair(w http.ResponseWriter, r *http.Request) error {
 		return fail(400, "code is required")
 	}
 	for _, vaultID := range s.Registry.ListVaults() {
-		_, note, ok := s.pairStore(vaultID).Redeem(req.Code)
+		pairFile := filepath.Join(s.Registry.VaultPath(vaultID), "paircodes.json")
+		_, note, ok := store.NewPairCodeStore(filepath.Dir(pairFile)).Redeem(req.Code)
 		if !ok {
 			continue
 		}
@@ -110,10 +111,7 @@ func (s *Server) handleBlobBulk(w http.ResponseWriter, r *http.Request, v *store
 			continue
 		}
 		if _, perr := v.PutBlobBytes(data); perr != nil {
-			// 不回传原始错误：*os.PathError 含服务器绝对磁盘路径，认证客户端可见即泄露面；
-			// 细节写 stderr（与 writeError 500 分支同一口径），客户端拿分类消息。
-			log.Printf("blobbulk store %s failed: %v", digest, perr)
-			failed = append(failed, failure{digest, "blob write failed"})
+			failed = append(failed, failure{digest, perr.Error()})
 			continue
 		}
 		stored = append(stored, digest)
@@ -155,50 +153,49 @@ func (s *Server) handleGetBlob(w http.ResponseWriter, r *http.Request, v *store.
 		return fail(404, "blob not found")
 	}
 	total := st.Size()
-var start, end int64 = 0, total - 1
-rangeHeader := r.Header.Get("Range")
+	var start, end int64 = 0, total - 1
 if strings.HasPrefix(rangeHeader, "bytes=") {
-    // 416 仅在显式带 Range 头时判定：空文件（total=0）无 Range 的普通
-    // GET/HEAD 必须返回 200 空体——此前无条件检查导致空文件永久无法 pull
-    // （多 agent 审计 + release 二进制回归抓到，对齐 Python v2.1.3 修复）；
-    // 后缀 bytes=-N 取最后 N 字节（与 HTTP 语义对齐，此前被当成前 N 字节）。
-    lo, hi, _ := strings.Cut(strings.TrimSpace(strings.Split(rangeHeader[6:], ",")[0]), "-")
-    bad := false
-    if lo != "" {
-        if n, perr := strconv.ParseInt(lo, 10, 64); perr == nil {
-            start = n
-            if hi != "" {
-                if m, perr := strconv.ParseInt(hi, 10, 64); perr == nil {
-                    end = m
-                } else {
-                    bad = true
-                }
-            } else {
-                end = total - 1
-            }
-        } else {
-            bad = true
-        }
-    } else if hi != "" {
-        if n, perr := strconv.ParseInt(hi, 10, 64); perr == nil {
-            start = total - n
-            if start < 0 {
-                start = 0
-            }
-            end = total - 1
-        } else {
-            bad = true
-        }
-    } else {
-        bad = true
-    }
-    if bad {
-        start, end = 0, total - 1
-    }
-    if start > end || start >= total {
-        return fail(416, "range not satisfiable")
-    }
-length := end - start + 1
+	// 416 仅在显式带 Range 头时判定：空文件（total=0）无 Range 的普通
+	// GET/HEAD 必须返回 200 空体——此前无条件检查导致空文件永久无法 pull
+	// （多 agent 审计 + release 二进制回归抓到，对齐 Python v2.1.3 修复）；
+	// 后缀 bytes=-N 取最后 N 字节（与 HTTP 语义对齐，此前被当成前 N 字节）。
+	lo, hi, _ := strings.Cut(strings.TrimSpace(strings.Split(rangeHeader[6:], ",")[0]), "-")
+	bad := false
+	if lo != "" {
+		if n, perr := strconv.ParseInt(lo, 10, 64); perr == nil {
+			start = n
+			if hi != "" {
+				if m, perr := strconv.ParseInt(hi, 10, 64); perr == nil {
+					end = m
+				} else {
+					bad = true
+				}
+			} else {
+				end = total - 1
+			}
+		} else {
+			bad = true
+		}
+	} else if hi != "" {
+		if n, perr := strconv.ParseInt(hi, 10, 64); perr == nil {
+			start = total - n
+			if start < 0 {
+				start = 0
+			}
+			end = total - 1
+		} else {
+			bad = true
+		}
+	} else {
+		bad = true
+	}
+	if bad {
+		start, end = 0, total - 1
+	}
+	if start > end || start >= total {
+		return fail(416, "range not satisfiable")
+	}
+	}
 	length := end - start + 1
 	code := http.StatusOK
 	if rangeHeader != "" {
@@ -239,7 +236,7 @@ func (s *Server) handlePeer(w http.ResponseWriter, r *http.Request,
 	if req == nil {
 		req = map[string]any{}
 	}
-	preg := s.peerRegistry(vaultID)
+	preg := store.NewPeerRegistry(s.Registry.VaultPath(vaultID))
 	switch sub {
 	case "register":
 		blobs := asStrings(req["blobs"])
