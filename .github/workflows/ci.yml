@@ -203,6 +203,12 @@ jobs:
         working-directory: desktop/app
         run: flutter analyze --no-fatal-infos
 
+      # 桥接层冒烟：上一步已 cargo build --release，DLL 落在 core 的开发态回退路径，
+      # flutter test 在宿主机 VM 直跑 dart:ffi 验证桥接契约（裸 JSON/白名单/错误通道）。
+      - name: Bridge layer smoke tests
+        working-directory: desktop/app
+        run: flutter test
+
       - name: Build Windows release
         working-directory: desktop/app
         shell: pwsh
