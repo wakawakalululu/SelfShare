@@ -55,11 +55,11 @@
 | 提案优先级 | 项 | 内容与动机 | 验收命令 / 证据 |
 | --- | --- | --- | --- |
 | ~~提案 P2~~ | ~~v2 客户端 P2P 可观测性~~ ✅ **已裁决立项并上移 §0.3 正式表**（2026-11-23，随 `v2.1.0` 发布） | 后台监控已按 `enable_p2p` 起本机节点并注册（watcher），但节点状态 / 监听地址 / 已注册 peer 只在 watcher 内部消息里，前端不可查。新增 `p2p_status` IPC（只读），设备页展示本机节点与在线 peer；手动同步不自起节点的行为保持 | `npm run build` + `cargo check --all-targets` + `engine_state` 新契约测试 |
-| 提案 P2 | 文档站 / wiki 口径刷新 | `docs/`（Jekyll）与 `.github/wiki/` 仍含 pre-v2.0.x 口径（latest 版本号、P2P 说明、自托管部署）；全文检索 + 逐页刷新到 v2.0.4 事实（latest、enable_p2p 语义、NSIS 安装） | 全文检索（旧口径清零）+ pages.yml 绿 |
-| 提案 P3 | `bench_ab` 常态化 | 现 A/B 基准仅手动运行；新增 `workflow_dispatch`（不进 push 门禁，AGENTS §5.7 不作 SLA）周期采集吞吐数据落 artifact，为性能回归提供纵向样本 | workflow_dispatch 实跑 + artifact 非空 |
-| 提案 P3 | 真实部署环境 `scan_vault_db` 采集指引 | O-1/O-6 立项仍缺真实部署数据；产出 runbook（`--json` 汇总格式、--immutable 用法、脱敏要求）+ 可选 `workflow_dispatch` 采集模板；数据到位后再裁决 O-1/O-6 | runbook 评审 + 采集样例 |
-| 提案 P3 | 发版流程余量收敛 | 本轮发现：PAT 切 tag 会自动触发 release.yml（v2.0.4 跑了 #17/#18 两次，幂等无害但浪费）。收敛为「切 tag 即自动发版」或「GITHUB_TOKEN 切 tag + 手动 dispatch」二选一，并更新 cut-release.yml 说明 | 发版演练一次（run 编号 + 资产计数） |
-| 提案 口径 | semver 约定立此存照 | v2.0.4 把 P2P 数据面功能放在补丁位，属 semver 口径瑕疵。约定：**功能类进 minor（下一功能版 = v2.1.0），补丁位只收修复**；已在库的 v2.0.4 不追改（不发修订版） | 无（口径条目）；下次发版按此执行 |
+| ~~提案 P2~~ | ~~文档站 / wiki 口径刷新~~ ✅ **已裁决立项并执行**（2026-11-23，提交 `3b3e2e9`，ci #102 / pages #21·#93 绿） | `docs/`（Jekyll）与 `.github/wiki/` 仍含 pre-v2.0.x 口径（latest 版本号、P2P 说明、自托管部署）；全文检索 + 逐页刷新到 v2.0.4 事实（latest、enable_p2p 语义、NSIS 安装） | 全文检索（旧口径清零）+ pages.yml 绿 |
+| ~~提案 P3~~ | ~~`bench_ab` 常态化~~ ⏸ **用户未裁决**（2026-11-23 裁决轮未勾选）——保留原提案不动，可再次提请 | 现 A/B 基准仅手动运行；新增 `workflow_dispatch`（不进 push 门禁，AGENTS §5.7 不作 SLA）周期采集吞吐数据落 artifact，为性能回归提供纵向样本 | workflow_dispatch 实跑 + artifact 非空 |
+| ~~提案 P3~~ | ~~真实部署环境 `scan_vault_db` 采集指引~~ ✅ **已裁决立项并执行**（2026-11-23，提交 `b7e18cf`，runbook 落 docs/） | O-1/O-6 立项仍缺真实部署数据；产出 runbook（`--json` 汇总格式、--immutable 用法、脱敏要求）+ 可选 `workflow_dispatch` 采集模板；数据到位后再裁决 O-1/O-6 | runbook 评审 + 采集样例 |
+| ~~提案 P3~~ | ~~发版流程余量收敛~~ ⏸ **用户未裁决**（2026-11-23 裁决轮未勾选）——保留原提案不动（其中「PAT 切 tag 自动触发 release.yml」事实已随 v2.1.0 发版实证：单次 run #19） | 本轮发现：PAT 切 tag 会自动触发 release.yml（v2.0.4 跑了 #17/#18 两次，幂等无害但浪费）。收敛为「切 tag 即自动发版」或「GITHUB_TOKEN 切 tag + 手动 dispatch」二选一，并更新 cut-release.yml 说明 | 发版演练一次（run 编号 + 资产计数） |
+| ~~提案 口径~~ | ~~semver 约定立此存照~~ ✅ **已裁决并上移 §0.3 正式表**（2026-11-23，见 §0.3「版本口径」注） | 口径已生效：`v2.1.0` 为首个 minor 功能版；v2.0.4 的补丁位功能不追改（不发修订版） | 无（口径条目） |
 
 > 环境受限余量（darwin / linux-arm64 实机、真一次性 VM 安装）不设提案行——须硬件到位，属条件触发项。
 
@@ -290,6 +290,7 @@ git add v2/client/index.html v2/client/package.json v2/client/svelte.config.js \
 | 发布标签 | `v1.1.0` / `v1.2.0` / `v1.3.0`（`714e9ee91cfe0e69ad9fb25e4c3fdc9a37f36d85`）/ `v2.0.0`（`1c8559c`，附注 tag，Release 7 资产） |
 | 另一远程分支 | `origin/main` @ `78d0293a9e03cdb90bf9fa430c8752a7014a45cd`（仅含 Initial commit，待人工归档） |
 | 分析日期 | 2026-11-04（含当日第二轮开发与运行测试；2026-11-07 状态见 §1.1.1） |
+| 2026-11-23 清理 | **经用户裁决执行**（§0.3.1 破坏性项 G/H，`LOOP-20261123-02` 轮内）：`refs/heads/main`（78d0293）与 `refs/tags/master`（176710fe）已删除（各留 200→204→404 证据链）；v1.2.0（release id 432163859）/ v1.3.0（id 432212150）release+tag 已删除（同样留证据链）。剩余：master 分支 + tags v2.1.0…v2.0.0/v1.1.0；releases v2.1.0（latest）…v2.0.0 + v1.1.0（prerelease，按既有决定保留）。§1 起历史小节中的 v1.2.0/v1.3.0 下载链接因此失效属预期（CHANGELOG 小节仍保留文案） |
 | 分析范围 | 根目录 v1（99 个已跟踪文件）、`v2/`（8127 个文件）、`.github/workflows/`、`docs/`、`.github/wiki/`、`deploy/` |
 | 运行验证 | Go 20 + vet、Python 29（其中 24 对接 Go 二进制）、Rust 18 + 2、前端构建、Tauri 编译、Windows/WSL 二进制、HTTPS、并发基准首次观测 21.5 MB/s（同轮 A/B 未复现 33 倍）；CI / CI v2 / Pages / Release 实跑全绿，详见 `v2/RELEASE_SUMMARY.md` §2.2、§4.1 |
 | 已执行操作 | `git add` / `git commit` / `git push` 已完成，`master` 与 `v2.0.0` tag 均已推送，工作区干净 |
