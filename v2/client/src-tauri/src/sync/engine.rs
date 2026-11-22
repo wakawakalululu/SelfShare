@@ -12,6 +12,7 @@ use std::sync::{Arc, Mutex};
 
 use selfshare_core::client::Client;
 use selfshare_core::engine::{SyncOptions, SyncReport, Syncer};
+use selfshare_core::peer;
 use selfshare_core::state::{LocalState, MountConfig as CoreMountConfig};
 use selfshare_core::util;
 use selfshare_core::watcher::{self, WatchHandle};
@@ -236,13 +237,21 @@ impl SyncEngine {
 
     // ---- 同步 ---- //
 
-    async fn run_sync(folder: PathBuf) -> Result<SyncReport, String> {
+    /// 单次同步。`enable_p2p`（设置开关驱动，默认关闭）时拉取走 peer 优先、
+    /// 中心回退（C6 §3：节点不可达静默回退，blob 落盘前仍过摘要/大小校验）。
+    /// peer_id 仅作 exclude 句柄：本机节点 id 由 make_peer_id 保证实例唯一，
+    /// 这里不复用 watcher 的注册 id——若监控已在运行，发现自己也在发现列表里
+    /// 会自拉一次（回环命中，摘要校验保证正确性，代价可忽略）。
+    async fn run_sync(folder: PathBuf, enable_p2p: bool) -> Result<SyncReport, String> {
         tokio::task::spawn_blocking(move || {
             let state = LocalState::open(&folder).map_err(|e| e.to_string())?;
             let cfg = state.config().clone();
             let client = Client::new(&cfg.url, &cfg.vault, &cfg.token);
             let options = SyncOptions::load(state.folder());
             let mut syncer = Syncer::with_options(client, state, options);
+            if enable_p2p {
+                syncer.peer_id = Some(peer::make_peer_id(&format!("rust-{}", util::host_id())));
+            }
             syncer.sync()
         })
         .await
@@ -252,9 +261,11 @@ impl SyncEngine {
     pub async fn sync_once(&self, name: &str) -> Result<SyncStatus, String> {
         let m = self.mount(name)?;
         let folder = PathBuf::from(&m.local_path);
+        // 与 start_watch 同口径：P2P 由设置开关驱动（默认关闭）。
+        let enable_p2p = self.load_settings().enable_p2p;
         self.reg.lock().unwrap().syncing.insert(name.to_string());
 
-        let status = match Self::run_sync(folder).await {
+        let status = match Self::run_sync(folder, enable_p2p).await {
             Ok(rep) => status_from_report(name, &rep),
             Err(e) => SyncStatus {
                 mount_name: name.to_string(),

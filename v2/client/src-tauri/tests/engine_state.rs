@@ -251,3 +251,42 @@ async fn sync_once_surfaces_sync_failure_via_status_state_not_err() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// R5 / P2P 数据面接线契约：`enable_p2p` 打开后 `sync_once` 走 peer 优先拉取
+/// （中心回退，C6 §3），但**失败形状不变**——不可达环境下仍是
+/// Ok(SyncStatus{state:"error"})，而非 Err/panic/挂死。127.0.0.1:1 让 peers
+/// 发现与中心拉取都立即失败，无需任何 P2P 节点夹具；开关关闭（默认）的
+/// 失败形状由上方 D7 测试钉死。数据面路由本身由内核层覆盖
+/// （tests/test_p2p.py + Rust 集成），此处钉的是引擎接线契约。
+#[tokio::test]
+async fn sync_once_with_p2p_enabled_keeps_failure_shape() {
+    let dir = temp_dir("p2p-sync-once-error");
+    std::fs::create_dir_all(dir.join("folder")).expect("创建临时文件夹失败");
+    let engine = SyncEngine::new(dir.clone());
+    engine
+        .save_settings(&Settings {
+            enable_p2p: true,
+            ..engine.load_settings()
+        })
+        .expect("保存设置失败");
+    engine
+        .add_mount(MountConfig {
+            name: "m".to_string(),
+            local_path: dir.join("folder").to_string_lossy().to_string(),
+            server_url: "http://127.0.0.1:1".to_string(),
+            vault_id: "v".to_string(),
+            token: "t".to_string(),
+        })
+        .await
+        .expect("挂载失败");
+
+    let status = engine
+        .sync_once("m")
+        .await
+        .expect("开关开启时失败仍应封装为 Ok(SyncStatus)，而非 Err");
+    assert_eq!(status.state, "error");
+    assert!(!status.errors.is_empty());
+    assert_eq!(status.files_synced, 0, "失败时不应上报已同步文件数");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
