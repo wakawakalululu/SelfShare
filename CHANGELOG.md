@@ -48,7 +48,31 @@
 
 ---
 
-# [v2.1.0] — 2026-11-23
+# [v2.1.1] — 2026-11-23
+
+发布日期：2026-11-23
+发布范围：Rust 内核安全补丁——**`config.json` 落盘权限修复**（多 agent 安全扫描抓到的红线违反，`LOOP-20261123-03`）；Go 服务端与 v1 便携包按既定 release 流程重打（服务端代码与 v2.1.0 相同，仅版本号随版推进）。本版为 semver 口径下的首个补丁版（补丁位只收修复）。
+协议兼容：HTTP `ServiceVersion` 保持 `1.0`，磁盘数据格式不变；不触 P2P 认证（C6 §3）。
+
+## 内核（Rust）
+
+- **`config.json` 落盘 0600（AGENTS §5.4-4 红线修复）**：`desktop/core/src/util.rs::atomic_write` 此前用 `fs::File::create` 写临时文件（Unix 权限 = 0666 & ~umask，典型 0644），rename 后所有经它落盘的含令牌文件（Rust 内核 `config.json`（含 vault token）、Tauri 客户端 `registry.json`（含 MountConfig token））在 Unix 上全局可读——违反红线「config.json 落盘 0600」，且与 v1 Python（显式 chmod 0600）、v2 Go（`CreateTemp` 默认 0600）不对齐。修复：Unix 分支改用 `OpenOptions::mode(0o600)` 创建临时文件（rename 保留权限），Windows 走 ACL 无此语义、行为不变。新增回归测试 `util.rs::atomic_write_sets_owner_only_mode_on_unix`（断言落盘 mode == 0600，仅 unix 编译）。
+- 来源：多 agent 安全扫描（`LOOP-20261123-03`，agent 报告 = 1 条红线违反 + 3 项附带风险 + 17 项合规确认 + 7 处哑令牌定性为低风险测试夹具）。
+
+## 验证
+
+| 项目 | 结果 |
+| --- | --- |
+| GitHub Actions `ci.yml`（rust 双平台：cargo test --release 全量含 0600 回归测试；v2-client：vite 构建 + 静态扫描 + `cargo check --all-targets` + `engine_state` 9 例） | 全绿（安全修复提交上实证） |
+| GitHub Actions `ci-v2.yml` v2-client（`npm run build` + `cargo check --all-targets` + `engine_state`） | 全绿 |
+| Tauri Windows 安装包（NSIS，版本 2.1.1） | 流水线构建 + Windows 本机静默安装启动验证（截图证据） |
+| `release.yml` 资产校验（2 zip + 5 二进制 + 1 NSIS，非空 + 集合互斥） | 流水线内建 |
+
+## 升级说明
+
+客户端安装包直接覆盖升级（Windows 客户端走 ACL，权限行为不变；Unix/macOS 侧修复全局可读问题——建议尽快升级）；服务端无行为变更（v2.1.0 服务端可继续使用，二进制仅版本号差异），数据目录通用。
+
+
 
 发布日期：2026-11-23
 发布范围：Tauri 客户端功能版——**P2P 可观测性（R11 余量，§0.3.1 提案 A 经用户裁决立项）**；Go 服务端与 v1 便携包按既定 release 流程重打（服务端代码与 v2.0.4 相同，仅版本号随版推进）。**本版起 semver 口径生效：功能进 minor**。

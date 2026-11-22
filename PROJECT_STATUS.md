@@ -2,7 +2,7 @@
 
 > **本文 §0 是当前状态与后续路线的唯一权威入口**；§1 起为 2026-11-04 基线（`42d6764`）的历史盘点快照，R1–R12 已全部闭环，**不再作为当前口径维护**。
 > 仓库：`wakawakalululu/SelfShare`；基线：`master` == `origin/master`（2026-11-22 刷新，见 §0.2）
-> 发布：稳定版 **`v2.1.0`**（8 资产，latest，P2P 可观测性随版，**semver 口径生效：功能进 minor**）；`v2.0.4`（R5 P2P 数据面）、`v2.0.3`（O-2/O-3 UI）、`v2.0.2`（D7）、`v2.0.1` 补丁版存档；演练 `v1.1.0` 已转 prerelease（保留不删除，`release-hygiene.yml` 幂等固定 latest 口径）
+> 发布：稳定版 **`v2.1.1`**（8 资产，latest，config.json 0600 安全补丁随版）；`v2.1.0`（P2P 可观测性，首个 minor 功能版）、`v2.0.4`（R5 P2P 数据面）、`v2.0.3`（O-2/O-3 UI）、`v2.0.2`（D7）、`v2.0.1` 补丁版存档；`v2.0.4`（R5 P2P 数据面）、`v2.0.3`（O-2/O-3 UI）、`v2.0.2`（D7）、`v2.0.1` 补丁版存档；演练 `v1.1.0` 已转 prerelease（保留不删除，`release-hygiene.yml` 幂等固定 latest 口径）
 > 验证基线：L1 33 / L4 28 / DLL 冒烟 9 / Rust 26（lib 12 + 集成 14，含 D7/R5/R11 契约与 0600 回归）/ Go 24 / Tauri engine_state 9 / Flutter 桥接 8 / ABI 四方 19；ci.yml、ci-v2.yml、build-test-deploy、release.yml、release-hygiene.yml、cut-release.yml 六条流水线全绿实证
 > 维护约定：阶段性交付后只更新本文 §0 与 `CHANGELOG.md [Unreleased]`；`AGENTS.md` 只留规范与门禁、不放演进史；过程性记录归 `.codebuddy/skills/软件开发专家团/memory/`（不入库）
 
@@ -28,7 +28,7 @@
 | --- | --- |
 | 代码 | 2026-11-23 刷新：**P2P 可观测性已落地**（只读 `p2p_status` IPC + 设备页本机节点状态，随 `v2.1.0` 发布，`LOOP-20261123-02`）；此前 2026-11-22：C4-1（`1c4a5fd`）已随 `v2.0.1` 发布；**D7 / P1 假成功已修复**（`LOOP-20261122-01`）；**P2 断言加固已闭环**（`LOOP-20261122-03`）；**O-2/O-3 轻量 UI 已落地**（随 `v2.0.3` 发布）；**Flutter 桥接冒烟 8 例入 gui 门禁**（`LOOP-20261122-05`）；**R5 P2P 数据面已接通**（手动同步按 `enable_p2p` 开关走 peer 优先 + 中心回退，随 `v2.0.4` 发布，`LOOP-20261122-06`） |
 | 契约 | C3 rel 键规范化、C4 合并语义、C5 ABI/IPC 形状（冻结）、C6 路径 containment 均已落盘；O-1~O-3 已裁决（O-2/O-3 的 UI 增量已实现），O-5/O-6 维持冻结 |
-| 发布 | **`v2.1.0` 8 资产稳定版（latest）**；`v2.0.4`（R5 P2P 数据面）、`v2.0.3`（O-2/O-3）、`v2.0.2`（D7）、`v2.0.1`（C4-1）与 `v2.0.0` 存档；`release-hygiene.yml` 幂等固定 latest=最新补丁版；演练 `v1.1.0` 已转 prerelease |
+| 发布 | **`v2.1.1` 8 资产稳定版（latest）**；`v2.1.0`（P2P 可观测性，semver 口径首个 minor）、`v2.0.4`（R5 P2P 数据面）、`v2.0.3`（O-2/O-3）、`v2.0.2`（D7）、`v2.0.1`（C4-1）与 `v2.0.0` 存档；`release-hygiene.yml` 幂等固定 latest=最新补丁版；演练 `v1.1.0` 已转 prerelease |
 | 验证 | 上述历史基线继续有效；新增：Python 50 例对 release 二进制回归（v2.0.0 49/50 → v2.0.1 起 50/50）、ci-v2 9/9（含 Tauri Windows 构建）、release 8 资产端到端、hygiene 断言、WSL 服务端 + Windows GUI 本机联调（截图证据）；O-2/O-3 接线静态扫描门禁 + 5 例自测、Flutter 桥接冒烟 8 例入 ci.yml |
 | 遗留 | §0.3 路线图 P1/P2/P3 全部闭环（2026-11-22）；仅余环境受限余量（darwin / linux-arm64 实机与真一次性 VM 安装，须硬件）。无 P0/P1/P2 未闭环项；新增工作按「一次迭代一个目标」在 §0.3 增行 |
 
