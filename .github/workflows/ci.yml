@@ -48,6 +48,9 @@ jobs:
       - name: ABI name check script self-tests
         run: python tests/test_check_abi_names.py -v
 
+      - name: Vault DB scanner self-tests
+        run: python tests/test_scan_vault_db.py -v
+
       - name: Sync tests
         run: python tests/test_sync.py -v
 

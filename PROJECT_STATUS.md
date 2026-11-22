@@ -37,7 +37,7 @@
 | 优先级 | 项 | 内容 | 验收命令 |
 | --- | --- | --- | --- |
 | ~~P1~~ | ~~D7~~ ✅ 已闭环（`LOOP-20261122-01`） | Dashboard 读取 sync IPC 返回状态，失败显示明细；`engine_state` 新增契约钉死测试 | `cargo test --test engine_state`、`npm run build`（ci-v2 v2-client 全绿） |
-| P1 | 存量库只读扫描 | 部署环境只读扫 `vault.db` 的 `files.rel`（首尾空白 / 盘符），作为 O-1/O-6 未来是否立项的依据（本机 `*.db` 数量 0） | 只读 SQL + 结论记录 |
+| ~~P1~~ | ~~存量库只读扫描~~ ✅ 已闭环（`LOOP-20261122-02`） | `desktop/scripts/scan_vault_db.py`（mode=ro / `--immutable`，whitespace / drive_letter / null 判类，`--json` 结论）；本地部署库实测 1 files + 1 versions 行 clean；结论记录见 CHANGELOG | `python tests/test_scan_vault_db.py`（ci.yml self-tests 步骤） |
 | P2 | O-2 / O-3 轻量 UI | 设置页首次进入一次性提示；>512 MiB 文件进度提示 | `npm run build` + 静态扫描 |
 | P2 | `flutter test` 冒烟 | `desktop/app/test/` 桥接层冒烟接入 `ci.yml gui`（`ss_find_mount` 无自然业务调用点，不硬接线） | `flutter test`（CI） |
 | P2 | 断言加固 | `integration.rs` 的 `ss_progress` 子串断言改 `serde_json` 反序列化，消除形状改动时的静默假通过 | `cargo test --release --test integration` |
