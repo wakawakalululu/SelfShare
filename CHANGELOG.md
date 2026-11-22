@@ -48,7 +48,39 @@
 
 ---
 
-# [v2.1.1] — 2026-11-23
+# [v2.1.2] — 2026-11-23
+
+发布日期：2026-11-23
+发布范围：稳健性补丁——多 agent 第二轮审计（Go 服务端深查 / Rust core+客户端深查）抓到的 3 项缺陷修复（`LOOP-20261123-06`）；Go 服务端与 v1 便携包按既定 release 流程重打。semver 口径：补丁位只收修复。
+协议兼容：HTTP `ServiceVersion` 保持 `1.0`，磁盘数据格式与 P2P 认证（C6 §3）不变；无 IPC 形状变化。
+
+## 服务端（Go）
+
+- **blobbulk 部分失败不再泄露服务器路径**：`handlers.go` bulk 上传的 `failed[].error` 此前携带 `PutBlobBytes` 的原始错误（`*os.PathError` 含服务器绝对磁盘路径），认证客户端可见——与 `writeError` 500 分支刻意规避的泄露形态同类。现在细节写 stderr（`log.Printf`），客户端只拿分类消息「blob write failed」。
+- **配对码 / peer 注册表并发丢更新修复**：`PairCodeStore` / `PeerRegistry` 此前**每请求新建实例**，实例内部互斥锁跨请求无效——`paircodes.json` 的 Redeem 读-改-写在并发下丢更新，**一次性配对码可被并发兑换两次**；`peers.json` 的 Register 同理。修复：`Server` 持每 vault 共享实例（`sync.Map` 懒创建，`LoadOrStore`），三个调用点改用共享实例，同 vault 操作在其自带锁上串行。Python v1 存在同类每请求模式（parity 备忘，本轮不改）。
+
+## 内核（Rust）
+
+- **`percent_decode` 字符边界 panic 修复**：查询串解码此前用 `&s[i+1..i+3]` 的 str 切片——`%` 紧邻多字节 UTF-8（如 `%a中`）时切到字符中间触发 panic，且位于**未认证**的 `/p2p/ping`、`/p2p/blob` 解析路径上（LAN 内可任意打崩单连接线程）。修复为逐字节十六进制解析（`hex_digit`），语义不变；新增回归测试 `percent_decode_handles_multibyte_after_percent`（Rust 27 例，lib 13 + 集成 14）。
+
+## 审计口径说明
+
+本轮为多 agent 第二轮深查：Go 服务端（0 红线违反、5 低风险：本轮修 2，其余 3 项为两端共有 parity/契约内行为，记录在 ANALYSIS §19）；Rust core+客户端（4 缺陷：本轮修 1 + 0600 已随 v2.1.1，scan_dir 吞错与 syncing 互斥属同步语义变更，立项为下一轮提案——见 ANALYSIS §19）；历史口径 9 漂移已由 `e9617b5` 修正（CHANGELOG [v2.1.0]/[v2.0.4] 标题恢复等）。
+
+## 验证
+
+| 项目 | 结果 |
+| --- | --- |
+| GitHub Actions `ci.yml`（rust 双平台含 percent_decode 回归；v2-client 四步） | 全绿（修复提交上实证） |
+| GitHub Actions `ci-v2.yml`（server-test：`go test -race ./...` + `go vet`——共享 store 并发变更的 race 门禁；compat 28 例） | 全绿 |
+| Tauri Windows 安装包（NSIS，版本 2.1.2） | 流水线构建 + Windows 本机静默安装启动验证（截图证据） |
+| `release.yml` 资产校验（2 zip + 5 二进制 + 1 NSIS，非空 + 集合互斥） | 流水线内建 |
+
+## 升级说明
+
+服务端**建议升级**（配对码并发兑换与路径泄露修复在服务端生效）；客户端安装包直接覆盖升级；数据目录通用。
+
+
 
 发布日期：2026-11-23
 发布范围：Rust 内核安全补丁——**`config.json` 落盘权限修复**（多 agent 安全扫描抓到的红线违反，`LOOP-20261123-03`）；Go 服务端与 v1 便携包按既定 release 流程重打（服务端代码与 v2.1.0 相同，仅版本号随版推进）。本版为 semver 口径下的首个补丁版（补丁位只收修复）。
