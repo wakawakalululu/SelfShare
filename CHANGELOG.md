@@ -41,6 +41,33 @@
 
 ---
 
+# [v2.0.4] — 2026-11-22
+
+发布日期：2026-11-22
+发布范围：Tauri 客户端功能版——**R5 / P2P 数据面接通**（`enable_p2p` 开关驱动的手动同步 peer 优先拉取 + 中心回退）；随版携带已入库的 **flutter 桥接冒烟门禁**；Go 服务端与 v1 便携包按既定 release 流程重打（服务端代码与 v2.0.3 相同，仅版本号随版推进）。
+协议兼容：HTTP `ServiceVersion` 保持 `1.0`，磁盘数据格式不变；P2P 认证按 C6 §3（vault token HMAC 双向验证，token 不出现在 P2P 请求）不变，服务端发现列表接口无改动。
+
+## 客户端（Rust + Tauri）
+
+- **R5 P2P 数据面**：`sync_once` → `run_sync` 此前硬编码 `peer_id=None`（手动同步只走中心），现按设置开关（默认关闭，O-2 口径）在 `enable_p2p` 时设置 peer_id——拉取走 peer 优先、节点不可达**静默回退中心**（C6 §3）；blob 落盘前的摘要/大小校验、C4 合并语义、C5 ABI 形状均不变。后台监控路径的 P2P（R11 接线）不变：watcher 起本机节点并注册，监控周期同步 peer 优先。`peer_id` 仅作 exclude 句柄（`make_peer_id` 实例唯一），监控中自拉为回环命中、摘要校验保证正确性。
+- 新增契约测试 `tests/engine_state.rs::sync_once_with_p2p_enabled_keeps_failure_shape`：开关开启 + 不可达中心（127.0.0.1:1，无 P2P 夹具）下 `sync_once` 仍返回 `Ok(SyncStatus{state:"error"})`——启用 P2P 不改变 IPC 失败形状；数据面路由由内核层既有测试覆盖（`tests/test_p2p.py` + Rust 集成）。
+- 随版携带 `LOOP-20261122-05`：Flutter 桥接冒烟 8 例接入 `ci.yml` gui job（`flutter test`，宿主机 VM 直跑 dart:ffi 加载真实 DLL）。
+
+## 验证
+
+| 项目 | 结果 |
+| --- | --- |
+| GitHub Actions `ci.yml`（v2-client：vite 构建 + 静态扫描 + `cargo check --all-targets` + `engine_state` 含新契约测试；Rust 双平台矩阵） | 全绿（P2P 提交上实证） |
+| GitHub Actions `ci-v2.yml` v2-client（`npm run build` + `cargo check --all-targets` + `engine_state`） | 全绿 |
+| Tauri Windows 安装包（NSIS，版本 2.0.4） | 流水线构建 + Windows 本机静默安装启动验证（截图证据） |
+| `release.yml` 资产校验（2 zip + 5 二进制 + 1 NSIS，非空 + 集合互斥） | 流水线内建 |
+
+## 升级说明
+
+客户端安装包直接覆盖升级；服务端无行为变更（v2.0.3 服务端可继续使用，二进制仅版本号差异），数据目录通用。P2P 仍默认关闭：需在设置页手动开启（限局域网，README §P2P）。
+
+---
+
 # [v2.0.3] — 2026-11-22
 
 发布日期：2026-11-22

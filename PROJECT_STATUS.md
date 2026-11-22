@@ -2,7 +2,7 @@
 
 > **本文 §0 是当前状态与后续路线的唯一权威入口**；§1 起为 2026-11-04 基线（`42d6764`）的历史盘点快照，R1–R12 已全部闭环，**不再作为当前口径维护**。
 > 仓库：`wakawakalululu/SelfShare`；基线：`master` == `origin/master`（2026-11-22 刷新，见 §0.2）
-> 发布：稳定版 **`v2.0.3`**（8 资产，latest，O-2/O-3 轻量 UI 随版）；`v2.0.2`（D7 随版）与 `v2.0.1` 补丁版存档；演练 `v1.1.0` 已转 prerelease（保留不删除，`release-hygiene.yml` 幂等固定 latest 口径）
+> 发布：稳定版 **`v2.0.4`**（8 资产，latest，R5 P2P 数据面随版）；`v2.0.3`（O-2/O-3 轻量 UI）、`v2.0.2`（D7）、`v2.0.1` 补丁版存档；演练 `v1.1.0` 已转 prerelease（保留不删除，`release-hygiene.yml` 幂等固定 latest 口径）
 > 验证基线：L1 33 / L4 28 / DLL 冒烟 9 / Rust 25+1（D7 契约） / Go 24 / ABI 四方 19；ci.yml、ci-v2.yml、build-test-deploy、release.yml、release-hygiene.yml、cut-release.yml 六条流水线全绿实证
 > 维护约定：阶段性交付后只更新本文 §0 与 `CHANGELOG.md [Unreleased]`；`AGENTS.md` 只留规范与门禁、不放演进史；过程性记录归 `.codebuddy/skills/软件开发专家团/memory/`（不入库）
 
@@ -26,10 +26,10 @@
 
 | 维度 | 事实 |
 | --- | --- |
-| 代码 | 2026-11-22 刷新：C4-1（`1c4a5fd`）已随 `v2.0.1` 发布；**D7 / P1 假成功已修复**（`LOOP-20261122-01`）；**P2 断言加固已闭环**（`ss_progress` 反序列化断言 + `ProgressSnapshot` 补 `Deserialize`，C5 形状不变，`LOOP-20261122-03`）；**O-2/O-3 轻量 UI 已落地**（设置页一次性提示 + `list_large_files` 大文件提示与耗时估算，随 `v2.0.3` 发布） |
+| 代码 | 2026-11-22 刷新：C4-1（`1c4a5fd`）已随 `v2.0.1` 发布；**D7 / P1 假成功已修复**（`LOOP-20261122-01`）；**P2 断言加固已闭环**（`LOOP-20261122-03`）；**O-2/O-3 轻量 UI 已落地**（随 `v2.0.3` 发布）；**Flutter 桥接冒烟 8 例入 gui 门禁**（`LOOP-20261122-05`）；**R5 P2P 数据面已接通**（手动同步按 `enable_p2p` 开关走 peer 优先 + 中心回退，随 `v2.0.4` 发布，`LOOP-20261122-06`） |
 | 契约 | C3 rel 键规范化、C4 合并语义、C5 ABI/IPC 形状（冻结）、C6 路径 containment 均已落盘；O-1~O-3 已裁决（O-2/O-3 的 UI 增量已实现），O-5/O-6 维持冻结 |
-| 发布 | **`v2.0.3` 8 资产稳定版（latest）**；`v2.0.2`（D7 随版）、`v2.0.1`（C4-1 随版）与 `v2.0.0` 存档；`release-hygiene.yml` 幂等固定 latest=最新补丁版；演练 `v1.1.0` 已转 prerelease |
-| 验证 | 上述历史基线继续有效；新增：Python 50 例对 release 二进制回归（v2.0.0 49/50 → v2.0.1 起 50/50）、ci-v2 9/9（含 Tauri Windows 构建）、release 8 资产端到端、hygiene 断言、WSL 服务端 + Windows GUI 本机联调（截图证据）；O-2/O-3 接线静态扫描门禁 + 5 例自测入 ci.yml |
+| 发布 | **`v2.0.4` 8 资产稳定版（latest）**；`v2.0.3`（O-2/O-3）、`v2.0.2`（D7）、`v2.0.1`（C4-1）与 `v2.0.0` 存档；`release-hygiene.yml` 幂等固定 latest=最新补丁版；演练 `v1.1.0` 已转 prerelease |
+| 验证 | 上述历史基线继续有效；新增：Python 50 例对 release 二进制回归（v2.0.0 49/50 → v2.0.1 起 50/50）、ci-v2 9/9（含 Tauri Windows 构建）、release 8 资产端到端、hygiene 断言、WSL 服务端 + Windows GUI 本机联调（截图证据）；O-2/O-3 接线静态扫描门禁 + 5 例自测、Flutter 桥接冒烟 8 例入 ci.yml |
 | 遗留 | §0.3 所列 P1/P2 项；无 P0 未闭环项 |
 
 ### 0.3 后续路线（按优先级，一次迭代一个目标）
@@ -40,6 +40,7 @@
 | ~~P1~~ | ~~存量库只读扫描~~ ✅ 已闭环（`LOOP-20261122-02`） | `desktop/scripts/scan_vault_db.py`（mode=ro / `--immutable`，whitespace / drive_letter / null 判类，`--json` 结论）；本地部署库实测 1 files + 1 versions 行 clean；结论记录见 CHANGELOG | `python tests/test_scan_vault_db.py`（ci.yml self-tests 步骤） |
 | ~~P2~~ | ~~O-2 / O-3 轻量 UI~~ ✅ 已闭环（`LOOP-20261122-04`，随 `v2.0.3` 发布） | 设置页首次进入一次性提示（localStorage 一次性标记，O-2 裁决口径）；新增 `list_large_files` IPC（只读遍历本地目录，>512 MiB 阈值），仪表盘按挂载提示大文件与耗时估算（~10 MB/s 基准，标注估算）；接线静态扫描门禁（11 标记）+ 5 例自测入 ci.yml | `npm run build` + 静态扫描（ci.yml v2-client 步骤 + python self-tests） |
 | ~~P2~~ | ~~`flutter test` 冒烟~~ ✅ 已闭环（`LOOP-20261122-05`） | `desktop/app/test/rust_bridge_smoke_test.dart` 8 例桥接冒烟（宿主机 VM 直跑 dart:ffi，加载 gui job 前置构建的真实 DLL：裸 JSON 三函数 / ok_json 幂等 / C5-3 白名单 / 错误通道 / 不可达 probe）；`ci.yml` gui job 增补 `flutter test` 步骤；不为 `ss_find_mount` 硬接业务调用点 | `flutter test`（CI gui job「Bridge layer smoke tests」步骤） |
+| ~~R5~~ | ~~P2P 数据面（Tauri）~~ ✅ 已闭环（`LOOP-20261122-06`，随 `v2.0.4` 发布） | 手动同步 `sync_once` 按 `enable_p2p` 开关（默认关闭，O-2 口径）走 peer 优先拉取 + 中心静默回退（C6 §3 HMAC 不变）；后台监控路径的 P2P（R11）不变；新增 `engine_state` 契约测试钉死「开关开启不改 IPC 失败形状」；数据面路由由内核层 `test_p2p.py` + Rust 集成覆盖 | `cargo test --test engine_state`、`cargo check --all-targets`（ci/ci-v2 双绿） |
 | ~~P2~~ | ~~断言加固~~ ✅ 已闭环（`LOOP-20261122-03`） | `integration.rs` 的 `ss_progress` 子串断言改 `serde_json` 反序列化进 `ProgressSnapshot`（形状改动显式失败，不再静默假通过）；`ProgressSnapshot` 补 `Deserialize`（纯增量，C ABI JSON 不变） | `cargo test --release --test integration`（ci.yml rust job 双平台全绿） |
 | P2 | 隔离环境冒烟 | NSIS 真实安装 + GUI 窗口、非 Windows 产物实机、并发基准 | 一次性 VM / 沙箱 |
 | P3 | 工程债 | `abi-ipc.md` C5-6 行号近似引用、CI job 重复收敛、CHANGELOG 历史锚点 | 全文检索 + CI 时长对比 |
