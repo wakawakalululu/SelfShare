@@ -53,6 +53,7 @@ pub fn run() {
             commands::is_sync_paused,
             commands::sync_all_mounts,
             commands::list_peers,
+            commands::list_large_files,
         ])
         .run(tauri::generate_context!())
         .expect("error while running SelfShare");

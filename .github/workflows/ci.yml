@@ -51,6 +51,9 @@ jobs:
       - name: Vault DB scanner self-tests
         run: python tests/test_scan_vault_db.py -v
 
+      - name: O-2/O-3 UI hint wiring self-tests
+        run: python tests/test_check_v2_ui_hints.py -v
+
       - name: Sync tests
         run: python tests/test_sync.py -v
 
@@ -270,6 +273,9 @@ jobs:
         run: |
           npm ci --no-fund --no-audit
           npm run build
+
+      - name: O-2/O-3 UI hint wiring static scan
+        run: python desktop/scripts/check_v2_ui_hints.py
 
       - name: Cargo check (server kernel + tauri client)
         working-directory: v2/client/src-tauri

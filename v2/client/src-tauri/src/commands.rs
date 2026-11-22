@@ -276,3 +276,65 @@ pub async fn list_peers(
     let engine = state.engine.lock().await;
     engine.list_peers(&mount_name).await
 }
+
+/// O-3：>512 MiB 大文件阈值（README §限制：单文件 2 GiB 上限 + 改一次整体重传）。
+pub const LARGE_FILE_THRESHOLD: u64 = 512 * 1024 * 1024;
+
+#[derive(Serialize)]
+pub struct LargeFileEntry {
+    /// 相对挂载根的路径
+    pub path: String,
+    pub size_bytes: u64,
+}
+
+/// 列出挂载本地目录内超过 [`LARGE_FILE_THRESHOLD`] 的文件，供前端给
+/// 「大文件同步较慢（整体重传）」的进度提示与预期时间估算。
+/// 只读本地文件系统，不触服务端协议；取到挂载路径后即释放引擎锁。
+#[tauri::command]
+pub async fn list_large_files(
+    state: State<'_, AppState>,
+    name: String,
+) -> Result<Vec<LargeFileEntry>, String> {
+    let local_path = {
+        let engine = state.engine.lock().await;
+        engine
+            .list_mounts()
+            .await?
+            .into_iter()
+            .find(|m| m.name == name)
+            .ok_or_else(|| format!("mount 不存在: {}", name))?
+            .local_path
+    };
+    let root = std::path::PathBuf::from(local_path);
+    if !root.is_dir() {
+        return Err(format!("本地路径不存在或不是目录: {}", root.display()));
+    }
+    let mut out: Vec<LargeFileEntry> = Vec::new();
+    let mut stack = vec![root.clone()];
+    while let Some(dir) = stack.pop() {
+        let rd = match std::fs::read_dir(&dir) {
+            Ok(rd) => rd,
+            // 无权限/已消失的子目录跳过，不阻塞大文件提示
+            Err(_) => continue,
+        };
+        for entry in rd.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if let Ok(md) = entry.metadata() {
+                if md.len() > LARGE_FILE_THRESHOLD {
+                    out.push(LargeFileEntry {
+                        path: p
+                            .strip_prefix(&root)
+                            .unwrap_or(&p)
+                            .to_string_lossy()
+                            .to_string(),
+                        size_bytes: md.len(),
+                    });
+                }
+            }
+        }
+    }
+    out.sort_by(|a, b| b.size_bytes.cmp(&a.size_bytes));
+    Ok(out)
+}

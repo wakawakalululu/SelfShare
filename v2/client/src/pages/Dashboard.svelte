@@ -11,6 +11,27 @@
   let message = ''
   let timer: any = null
 
+  // O-3：>512 MiB 大文件提示（按挂载名缓存；整体重传语义 + 预期时间估算）
+  let largeFiles: any = {}
+  let largeScanned: Set<string> = new Set()
+
+  function estimateMinutes(bytes: number) {
+    // README §限制：无分块增量，改一次整体重传；按实测基准保守取 ~10 MB/s 估算
+    const rate = 10 * 1024 * 1024
+    return Math.max(1, Math.round(bytes / rate / 60))
+  }
+
+  async function checkLargeFiles(name: string) {
+    try {
+      const files: any[] = await invoke('list_large_files', { name })
+      largeFiles = { ...largeFiles, [name]: files }
+    } catch (e) {
+      // 扫描失败不打扰主界面，仅记录；下次手动重查
+      console.warn(`list_large_files(${name}) failed:`, e)
+      largeFiles = { ...largeFiles, [name]: null }
+    }
+  }
+
   async function loadMounts() {
     try {
       mounts = await invoke('list_mounts')
@@ -23,6 +44,13 @@
         }
       } else {
         stat = null
+      }
+      // 大文件扫描只在每个挂载首次加载时做一次，不跟 5 秒轮询重复执行
+      for (const m of mounts) {
+        if (!largeScanned.has(m.name)) {
+          largeScanned.add(m.name)
+          checkLargeFiles(m.name)
+        }
       }
     } catch (e) {
       message = '加载失败: ' + e
@@ -149,8 +177,17 @@
             <p><strong>服务器:</strong> {mount.server_url}</p>
             <p><strong>库ID:</strong> {mount.vault_id}</p>
           </div>
+          {#if largeFiles[mount.name]?.length}
+            <div class="large-hint">
+              <strong>大文件提示</strong>（>512 MiB，改动即整体重传）：
+              {largeFiles[mount.name].slice(0, 3).map((f) => `${f.path}（${humanBytes(f.size_bytes)}）`).join('、')}
+              {largeFiles[mount.name].length > 3 ? ` 等 ${largeFiles[mount.name].length} 个` : ''}
+              — 按基准 ~10 MB/s 估算约 {estimateMinutes(largeFiles[mount.name].reduce((s, f) => s + f.size_bytes, 0))} 分钟
+            </div>
+          {/if}
           <div class="mount-actions">
             <button on:click={() => syncMount(mount.name)}>立即同步</button>
+            <button class="secondary" on:click={() => checkLargeFiles(mount.name)}>查大文件</button>
           </div>
         </div>
       {/each}
@@ -186,5 +223,13 @@
   .status.active { background: #1a936f; }
   .mount-info p { margin: 0.5rem 0; font-size: 0.85rem; color: #aaa; }
   .mount-info strong { color: #ddd; }
-  .mount-actions { margin-top: 1rem; }
+  .large-hint {
+    margin-top: 0.75rem;
+    padding: 0.6rem 0.75rem;
+    border-radius: 6px;
+    background: #3a2a10;
+    color: #ffd79a;
+    font-size: 0.8rem;
+  }
+  .mount-actions { margin-top: 1rem; display: flex; gap: 0.6rem; flex-wrap: wrap; }
 </style>
