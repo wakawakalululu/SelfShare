@@ -83,6 +83,10 @@ class Vault:
             self._db.commit()
             if self._get_meta("head_rev") is None:
                 self._set_meta("head_rev", "0")
+                # 收尾提交：否则 _set_meta 的 INSERT 留下跨请求的打开事务，
+                # 会使后续显式 BEGIN IMMEDIATE 失败（cannot start a transaction
+                # within a transaction）——多 agent 审计轮修复引入时暴露的旧债。
+                self._db.commit()
 
     # ---------------------------------------------------------------- meta ---
     def _get_meta(self, key: str) -> Optional[str]:
@@ -147,85 +151,95 @@ class Vault:
         conflicts: List[Dict[str, Any]] = []
         applied: List[Dict[str, Any]] = []
         with self._lock:
-            for op in ops:
-                rel = norm_rel(op.get("path", ""))
-                if not rel:
-                    continue
-                kind = op.get("op", "put")
-                base = op.get("base_hash")
-                row = self._db.execute(
-                    "SELECT hash, rev, deleted FROM files WHERE rel=?", (rel,)
-                ).fetchone()
-                current = None if (row is None or row["deleted"]) else row["hash"]
-                current_rev = row["rev"] if row else 0
-
-                if kind == "del":
-                    if current is None:
-                        continue  # already gone, nothing to do
-                    # C4-1: 与 put 分支统一为 base == current；base 缺失时也拒绝，
-                    # 防止畸形/旧客户端的无 base del 静默覆盖第三方新编辑（O-7）。
-                    if base != current:
-                        conflicts.append(
-                            {
-                                "path": rel,
-                                "reason": "remote_changed",
-                                "remote_hash": current,
-                                "remote_rev": current_rev,
-                            }
-                        )
+            # 跨连接串行化：BEGIN IMMEDIATE 立即取 RESERVED 锁，并发 commit 的
+            # SELECT-写 在此排队，C4 base 检查面对的是真实当前值（并发竞态此前
+            # 可绕过 base!=current 判定，静默覆盖第三方提交——多 agent 审计发现）。
+            if self._db.in_transaction:
+                self._db.rollback()  # 清理残留隐式事务（历史遗留的打开状态）
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                for op in ops:
+                    rel = norm_rel(op.get("path", ""))
+                    if not rel:
                         continue
-                    rev = self._bump()
-                    self._db.execute(
-                        "UPDATE files SET hash=NULL, size=NULL, mtime=NULL, rev=?, deleted=1 "
-                        "WHERE rel=?",
-                        (rev, rel),
-                    )
-                    self._record_version(rel, None, None, rev, origin, "del")
-                    applied.append({"path": rel, "rev": rev, "action": "del"})
-                    continue
+                    kind = op.get("op", "put")
+                    base = op.get("base_hash")
+                    row = self._db.execute(
+                        "SELECT hash, rev, deleted FROM files WHERE rel=?", (rel,)
+                    ).fetchone()
+                    current = None if (row is None or row["deleted"]) else row["hash"]
+                    current_rev = row["rev"] if row else 0
 
-                digest = op.get("hash")
-                if not isinstance(digest, str) or not self.has_blob(digest):
-                    raise Conflict("blob missing for %s: %r" % (rel, digest))
+                    if kind == "del":
+                        if current is None:
+                            continue  # already gone, nothing to do
+                        # C4-1: 与 put 分支统一为 base == current；base 缺失时也拒绝，
+                        # 防止畸形/旧客户端的无 base del 静默覆盖第三方新编辑（O-7）。
+                        if base != current:
+                            conflicts.append(
+                                {
+                                    "path": rel,
+                                    "reason": "remote_changed",
+                                    "remote_hash": current,
+                                    "remote_rev": current_rev,
+                                }
+                            )
+                            continue
+                        rev = self._bump()
+                        self._db.execute(
+                            "UPDATE files SET hash=NULL, size=NULL, mtime=NULL, rev=?, deleted=1 "
+                            "WHERE rel=?",
+                            (rev, rel),
+                        )
+                        self._record_version(rel, None, None, rev, origin, "del")
+                        applied.append({"path": rel, "rev": rev, "action": "del"})
+                        continue
 
-                if current != base:
-                    # Someone else moved this path since the client last synced.
+                    digest = op.get("hash")
+                    if not isinstance(digest, str) or not self.has_blob(digest):
+                        raise Conflict("blob missing for %s: %r" % (rel, digest))
+
+                    if current != base:
+                        # Someone else moved this path since the client last synced.
+                        if current == digest:
+                            continue  # already identical, silent no-op
+                        # A client that still holds edited content may resurrect a
+                        # path another host deleted. Nothing is overwritten (the
+                        # remote side is "absent"), so keep-both semantics hold.
+                        if op.get("force") and current is None:
+                            pass
+                        else:
+                            conflicts.append(
+                                {
+                                    "path": rel,
+                                    "reason": "remote_changed",
+                                    "remote_hash": current,
+                                    "remote_rev": current_rev,
+                                }
+                            )
+                            continue
+
                     if current == digest:
-                        continue  # already identical, silent no-op
-                    # A client that still holds edited content may resurrect a
-                    # path another host deleted. Nothing is overwritten (the
-                    # remote side is "absent"), so keep-both semantics hold.
-                    if op.get("force") and current is None:
-                        pass
-                    else:
-                        conflicts.append(
-                            {
-                                "path": rel,
-                                "reason": "remote_changed",
-                                "remote_hash": current,
-                                "remote_rev": current_rev,
-                            }
-                        )
-                        continue
+                        continue  # unchanged content, no new revision
 
-                if current == digest:
-                    continue  # unchanged content, no new revision
+                    rev = self._bump()
+                    size = int(op.get("size") or self.blob_size(digest))
+                    mtime = float(op.get("mtime") or time.time())
+                    self._db.execute(
+                        "INSERT INTO files(rel, hash, size, mtime, rev, deleted) "
+                        "VALUES(?,?,?,?,?,0) "
+                        "ON CONFLICT(rel) DO UPDATE SET hash=excluded.hash, size=excluded.size, "
+                        "mtime=excluded.mtime, rev=excluded.rev, deleted=0",
+                        (rel, digest, size, mtime, rev),
+                    )
+                    self._record_version(rel, digest, size, rev, origin, "put")
+                    applied.append({"path": rel, "hash": digest, "rev": rev, "action": "put"})
 
-                rev = self._bump()
-                size = int(op.get("size") or self.blob_size(digest))
-                mtime = float(op.get("mtime") or time.time())
-                self._db.execute(
-                    "INSERT INTO files(rel, hash, size, mtime, rev, deleted) "
-                    "VALUES(?,?,?,?,?,0) "
-                    "ON CONFLICT(rel) DO UPDATE SET hash=excluded.hash, size=excluded.size, "
-                    "mtime=excluded.mtime, rev=excluded.rev, deleted=0",
-                    (rel, digest, size, mtime, rev),
-                )
-                self._record_version(rel, digest, size, rev, origin, "put")
-                applied.append({"path": rel, "hash": digest, "rev": rev, "action": "put"})
-
-            self._db.commit()
-            return {"head_rev": self.head_rev, "applied": applied, "conflicts": conflicts}
+                self._db.commit()
+                return {"head_rev": self.head_rev, "applied": applied, "conflicts": conflicts}
+            except BaseException:
+                self._db.rollback()
+                raise
 
     def _record_version(
         self, rel: str, digest: Optional[str], size: Optional[int], rev: int, origin: str, action: str

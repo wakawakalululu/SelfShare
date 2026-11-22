@@ -155,33 +155,50 @@ func (s *Server) handleGetBlob(w http.ResponseWriter, r *http.Request, v *store.
 		return fail(404, "blob not found")
 	}
 	total := st.Size()
-	var start, end int64 = 0, total - 1
-	rangeHeader := r.Header.Get("Range")
-	if strings.HasPrefix(rangeHeader, "bytes=") {
-		lo, hi, _ := strings.Cut(strings.TrimSpace(strings.Split(rangeHeader[6:], ",")[0]), "-")
-		bad := false
-		if lo != "" {
-			if n, perr := strconv.ParseInt(lo, 10, 64); perr == nil {
-				start = n
-			} else {
-				bad = true
-			}
-		}
-		if hi != "" {
-			n, perr := strconv.ParseInt(hi, 10, 64)
-			if perr != nil {
-				bad = true
-			} else if n < total {
-				end = n
-			}
-		}
-		if bad {
-			start, end = 0, total-1
-		}
-	}
-	if start > end || start >= total {
-		return fail(416, "range not satisfiable")
-	}
+var start, end int64 = 0, total - 1
+rangeHeader := r.Header.Get("Range")
+if strings.HasPrefix(rangeHeader, "bytes=") {
+    // 416 仅在显式带 Range 头时判定：空文件（total=0）无 Range 的普通
+    // GET/HEAD 必须返回 200 空体——此前无条件检查导致空文件永久无法 pull
+    // （多 agent 审计 + release 二进制回归抓到，对齐 Python v2.1.3 修复）；
+    // 后缀 bytes=-N 取最后 N 字节（与 HTTP 语义对齐，此前被当成前 N 字节）。
+    lo, hi, _ := strings.Cut(strings.TrimSpace(strings.Split(rangeHeader[6:], ",")[0]), "-")
+    bad := false
+    if lo != "" {
+        if n, perr := strconv.ParseInt(lo, 10, 64); perr == nil {
+            start = n
+            if hi != "" {
+                if m, perr := strconv.ParseInt(hi, 10, 64); perr == nil {
+                    end = m
+                } else {
+                    bad = true
+                }
+            } else {
+                end = total - 1
+            }
+        } else {
+            bad = true
+        }
+    } else if hi != "" {
+        if n, perr := strconv.ParseInt(hi, 10, 64); perr == nil {
+            start = total - n
+            if start < 0 {
+                start = 0
+            }
+            end = total - 1
+        } else {
+            bad = true
+        }
+    } else {
+        bad = true
+    }
+    if bad {
+        start, end = 0, total - 1
+    }
+    if start > end || start >= total {
+        return fail(416, "range not satisfiable")
+    }
+length := end - start + 1
 	length := end - start + 1
 	code := http.StatusOK
 	if rangeHeader != "" {

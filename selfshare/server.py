@@ -297,6 +297,9 @@ class Handler(BaseHTTPRequestHandler):
         hex64 = re.compile(r"^[0-9a-f]{64}$")
         stored, existed, failed = [], [], []
         for item in items:
+            if not isinstance(item, dict):
+                failed.append({"hash": "", "error": "bad item: expected object"})
+                continue
             digest = str((item or {}).get("hash") or "").lower()
             if not hex64.match(digest):
                 failed.append({"hash": digest[:64], "error": "bad digest"})
@@ -336,17 +339,24 @@ class Handler(BaseHTTPRequestHandler):
         start, end = 0, total - 1
         range_header = self.headers.get("Range") or ""
         if range_header.startswith("bytes="):
+            # 416 仅在显式带 Range 头时判定：空文件（total=0）无 Range 的普通
+            # GET/HEAD 必须返回 200 空体——此前无条件检查导致空文件永久无法 pull。
             spec = range_header[6:].split(",")[0].strip()
             lo, _, hi = spec.partition("-")
             try:
                 if lo:
                     start = int(lo)
-                if hi:
-                    end = min(int(hi), total - 1)
+                    end = min(int(hi), total - 1) if hi else total - 1
+                    if start > end or start >= total:
+                        raise HandlerError(416, "range not satisfiable")
+                elif hi:
+                    # 后缀语义 bytes=-N：最后 N 字节（此前被当成前 0..N-1 字节）
+                    n = int(hi)
+                    if n <= 0 or total == 0:
+                        raise HandlerError(416, "range not satisfiable")
+                    start, end = max(0, total - n), total - 1
             except ValueError:
                 start, end = 0, total - 1
-            if start > end or start >= total:
-                raise HandlerError(416, "range not satisfiable")
         length = end - start + 1
         self.send_response(206 if range_header else 200)
         self.send_header("Content-Type", "application/octet-stream")

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import secrets
 import time
 from typing import Any, Dict, List, Optional
@@ -62,6 +63,10 @@ class PairCodeStore:
 
     def __init__(self, vault_root: str):
         self.path = os.path.join(vault_root, FILE)
+        # 进程内互斥：ThreadingHTTPServer 下 redeem/issue 的 load-改-save
+        # 必须串行，否则一次性配对码可被并发兑换两次、码表互相丢更新
+        # （多 agent 审计发现；Go 端同类修复见 v2.1.2 共享 store）。
+        self._mutex = threading.Lock()
 
     def _load(self) -> Dict[str, Any]:
         data = load_json(self.path, {"codes": {}}) or {"codes": {}}
@@ -84,74 +89,78 @@ class PairCodeStore:
 
     def issue(self, vault_id: str, ttl: float = DEFAULT_TTL,
               note: str = "") -> Dict[str, Any]:
-        ttl = max(60.0, min(float(ttl or DEFAULT_TTL), MAX_TTL))
-        data = self._load()
-        self._prune(data, vault_id)
-        code = _random_code()
-        # 极小概率碰撞，重新生成
-        for _ in range(8):
-            if code not in data["codes"]:
-                break
+        with self._mutex:
+            ttl = max(60.0, min(float(ttl or DEFAULT_TTL), MAX_TTL))
+            data = self._load()
+            self._prune(data, vault_id)
             code = _random_code()
-        data["codes"][_normalise(code)] = {
-            "vault": vault_id,
-            "created_at": time.time(),
-            "expires_at": time.time() + ttl,
-            "used": False,
-            "note": note,
-        }
-        self._save(data)
-        return {
-            "code": format_code(code),
-            "raw": code,
-            "expires_in": int(ttl),
-            "expires_at": time.strftime(
-                "%Y-%m-%d %H:%M:%S", time.localtime(time.time() + ttl)
-            ),
-        }
+            # 极小概率碰撞，重新生成
+            for _ in range(8):
+                if code not in data["codes"]:
+                    break
+                code = _random_code()
+            data["codes"][_normalise(code)] = {
+                "vault": vault_id,
+                "created_at": time.time(),
+                "expires_at": time.time() + ttl,
+                "used": False,
+                "note": note,
+            }
+            self._save(data)
+            return {
+                "code": format_code(code),
+                "raw": code,
+                "expires_in": int(ttl),
+                "expires_at": time.strftime(
+                    "%Y-%m-%d %H:%M:%S", time.localtime(time.time() + ttl)
+                ),
+            }
 
     def redeem(self, code: str) -> Optional[Dict[str, Any]]:
-        key = _normalise(code)
-        if not key:
-            return None
-        data = self._load()
-        item = data["codes"].get(key)
-        if not item:
-            return None
-        if item.get("used"):
-            return None
-        if item.get("expires_at", 0) < time.time():
-            data["codes"].pop(key, None)
+        with self._mutex:
+            key = _normalise(code)
+            if not key:
+                return None
+            data = self._load()
+            item = data["codes"].get(key)
+            if not item:
+                return None
+            if item.get("used"):
+                return None
+            if item.get("expires_at", 0) < time.time():
+                data["codes"].pop(key, None)
+                self._save(data)
+                return None
+            item["used"] = True
+            item["used_at"] = time.time()
             self._save(data)
-            return None
-        item["used"] = True
-        item["used_at"] = time.time()
-        self._save(data)
-        return {"vault": item["vault"], "note": item.get("note", "")}
+            return {"vault": item["vault"], "note": item.get("note", "")}
 
     def list_active(self, vault_id: str) -> List[Dict[str, Any]]:
-        data = self._load()
-        self._prune(data, vault_id)
-        self._save(data)
-        now = time.time()
-        out = []
-        for raw, item in data["codes"].items():
-            if item.get("vault") != vault_id or item.get("used"):
-                continue
-            out.append({
-                "code": format_code(raw),
-                "expires_in": max(0, int(item["expires_at"] - now)),
-                "note": item.get("note", ""),
-            })
-        out.sort(key=lambda x: x["expires_in"])
-        return out
+        with self._mutex:
+            data = self._load()
+            self._prune(data, vault_id)
+            self._save(data)
+            now = time.time()
+            out = []
+            for raw, item in data["codes"].items():
+                if item.get("vault") != vault_id or item.get("used"):
+                    continue
+                out.append({
+                    "code": format_code(raw),
+                    "expires_in": max(0, int(item["expires_at"] - now)),
+                    "note": item.get("note", ""),
+                })
+            out.sort(key=lambda x: x["expires_in"])
+            return out
 
     def revoke_all(self, vault_id: str) -> int:
-        data = self._load()
-        before = len(data["codes"])
-        data["codes"] = {
-            k: v for k, v in data["codes"].items() if v.get("vault") != vault_id
-        }
-        removed = before - len(data["codes"])
-        self._save(data)
-        return removed
+        with self._mutex:
+            data = self._load()
+            before = len(data["codes"])
+            data["codes"] = {
+                k: v for k, v in data["codes"].items() if v.get("vault") != vault_id
+            }
+            removed = before - len(data["codes"])
+            self._save(data)
+            return removed

@@ -214,6 +214,40 @@ class SyncTestCase(unittest.TestCase):
         self.assertNotIn("scratch.tmp", pushed)
         self.assertNotIn("build/out.bin", pushed)
 
+    def test_empty_file_pull_survives_range_check(self):
+        # 多 agent 审计（LOOP-20261123-03）：空文件 blob 此前被无条件 416 拒绝，
+        # pull 永久失败——修复后无 Range 的普通 GET 返回 200 空体。
+        src = os.path.join(self.a, "empty.txt")
+        open(src, "w").close()
+        self.sync(self.a)
+        rb = self.sync(self.b)
+        self.assertFalse(rb.errors, str(rb.errors))
+        dst = os.path.join(self.b, "empty.txt")
+        self.assertTrue(os.path.exists(dst), "空文件应被 pull 到 B")
+        self.assertEqual(os.path.getsize(dst), 0)
+
+    def test_blob_bulk_rejects_non_dict_item(self):
+        if self.fx.ext:
+            self.skipTest("Python server specific regression")
+        import json as _json
+        import urllib.request
+        req = urllib.request.Request(
+            self.fx.url + "/api/v/test/blobbulk",
+            data=_json.dumps({"blobs": ["not-a-dict", {"hash": "z" * 64, "data": ""}]}).encode("utf-8"),
+            method="POST",
+            headers={
+                "Authorization": "Bearer tok-test-123",
+                "Content-Type": "application/json",
+            },
+        )
+        with urllib.request.urlopen(req) as resp:
+            body = _json.loads(resp.read().decode("utf-8"))
+        self.assertEqual(resp.status, 200)
+        self.assertTrue(
+            any("expected object" in f.get("error", "") for f in body.get("failed", [])),
+            "非字典项应进入 failed 而非 500：%s" % body,
+        )
+
     def test_large_binary_roundtrip(self):
         payload = bytes(range(256)) * 8192  # 2 MiB, deterministic
         src = os.path.join(self.a, "blob.bin")
