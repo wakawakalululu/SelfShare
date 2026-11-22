@@ -290,3 +290,39 @@ async fn sync_once_with_p2p_enabled_keeps_failure_shape() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// R11 余量 / P2P 可观测性契约：`p2p_status` 只读快照在「开关关闭 + 监控未启动 +
+/// 中心不可达」的最简环境下必须形状完整且不误导——enabled=false、watching=false、
+/// node=None（未启 P2P 绝不虚报节点）、peers 为空（中心不可达静默容错，不把
+/// 网络错误折叠成 Err）。发现列表的非空路径由内核层 peers() 测试与集成覆盖。
+#[tokio::test]
+async fn p2p_status_reports_complete_shape_without_node_when_disabled() {
+    let dir = temp_dir("p2p-status");
+    std::fs::create_dir_all(dir.join("folder")).expect("创建临时文件夹失败");
+    let engine = SyncEngine::new(dir.clone());
+    engine
+        .add_mount(MountConfig {
+            name: "m".to_string(),
+            local_path: dir.join("folder").to_string_lossy().to_string(),
+            server_url: "http://127.0.0.1:1".to_string(),
+            vault_id: "v".to_string(),
+            token: "t".to_string(),
+        })
+        .await
+        .expect("挂载失败");
+
+    let st = engine
+        .p2p_status("m")
+        .await
+        .expect("p2p_status 只读查询不应失败");
+    assert_eq!(st.mount_name, "m");
+    assert!(!st.enabled, "默认设置下开关必须为关闭");
+    assert!(!st.watching, "未启动监控时 watching 必须为 false");
+    assert!(st.node.is_none(), "未启用 P2P 时不得虚报本机节点");
+    assert!(st.peers.is_empty(), "中心不可达时发现列表以空表达，不折叠成 Err");
+
+    // 分界不变：mount 不存在仍走 Err（查询型错误 ≠ 快照内容）。
+    assert!(engine.p2p_status("no-such-mount").await.is_err());
+
+    let _ = std::fs::remove_dir_all(&dir);
+}

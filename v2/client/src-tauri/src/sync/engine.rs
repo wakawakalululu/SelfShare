@@ -19,6 +19,24 @@ use selfshare_core::watcher::{self, WatchHandle};
 
 use super::state::{MountConfig, MountInfo, PeerEntry, Settings, Stat, SyncStatus, VersionEntry};
 
+/// 本机 P2P 节点快照（`p2p_status` 只读返回）。
+#[derive(serde::Serialize)]
+pub struct P2pNodeInfo {
+    pub peer_id: String,
+    pub listen: String,
+}
+
+/// P2P 状态快照：`enabled` = 设置开关；`watching` = 后台监控运行中；
+/// `node` = 本机节点（仅监控中且开关开启时为 Some）；`peers` = 中心发现列表。
+#[derive(serde::Serialize)]
+pub struct P2pStatus {
+    pub mount_name: String,
+    pub enabled: bool,
+    pub watching: bool,
+    pub node: Option<P2pNodeInfo>,
+    pub peers: Vec<PeerEntry>,
+}
+
 #[derive(Default)]
 struct Registry {
     mounts: HashMap<String, MountConfig>,
@@ -165,6 +183,35 @@ impl SyncEngine {
         .await
         .map_err(|e| e.to_string())??;
         Ok(out)
+    }
+
+    /// P2P 可观测性快照（只读）：设置开关 + 监控状态 + 本机节点 + 中心发现列表。
+    /// 发现列表查询失败（中心不可达）不作为错误——peers 以空列表表达「暂不可知」，
+    /// 与内核「节点不可达静默回退中心」的容错口径一致。
+    pub async fn p2p_status(&self, name: &str) -> Result<P2pStatus, String> {
+        let m = self.mount(name)?;
+        let enabled = self.load_settings().enable_p2p;
+        let (watching, node) = {
+            let w = self.watchers.lock().unwrap();
+            match w.get(name) {
+                Some(h) => {
+                    let node = h.peer_node().map(|n| P2pNodeInfo {
+                        peer_id: n.peer_id,
+                        listen: n.listen,
+                    });
+                    (h.is_running(), node)
+                }
+                None => (false, None),
+            }
+        };
+        let peers = self.list_peers(name).await.unwrap_or_default();
+        Ok(P2pStatus {
+            mount_name: m.name,
+            enabled,
+            watching,
+            node,
+            peers,
+        })
     }
 
     // ---- 挂载管理 ---- //

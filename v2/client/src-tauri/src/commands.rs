@@ -3,7 +3,7 @@ use tauri::State;
 use tokio::sync::Mutex;
 use std::sync::Arc;
 
-use crate::sync::{MountConfig, PeerEntry, Settings, SyncEngine, SyncStatus};
+use crate::sync::{MountConfig, P2pStatus, PeerEntry, Settings, SyncEngine, SyncStatus};
 
 pub struct AppState {
     pub engine: Arc<Mutex<SyncEngine>>,
@@ -275,6 +275,16 @@ pub async fn list_peers(
 ) -> Result<Vec<PeerEntry>, String> {
     let engine = state.engine.lock().await;
     engine.list_peers(&mount_name).await
+}
+
+/// P2P 可观测性快照（只读）：设置开关、监控状态、本机节点与中心发现列表。
+#[tauri::command]
+pub async fn p2p_status(
+    state: State<'_, AppState>,
+    name: String,
+) -> Result<P2pStatus, String> {
+    let engine = state.engine.lock().await;
+    engine.p2p_status(&name).await
 }
 
 /// O-3：>512 MiB 大文件阈值（README §限制：单文件 2 GiB 上限 + 改一次整体重传）。

@@ -6,17 +6,28 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
+
+use serde::Serialize;
 
 use crate::engine::{SyncReport, Syncer};
 use crate::state::LocalState;
 use crate::util::scan_dir;
 
+/// 本机 P2P 节点快照：watcher 线程在 `PeerServer::start` 成功后写入，
+/// 供 GUI 侧只读查询（节点 id 与监听地址）。
+#[derive(Debug, Clone, Serialize)]
+pub struct PeerNodeInfo {
+    pub peer_id: String,
+    pub listen: String,
+}
+
 pub struct WatchHandle {
     stop: Arc<AtomicBool>,
     join: Option<JoinHandle<()>>,
+    peer_node: Arc<Mutex<Option<PeerNodeInfo>>>,
 }
 
 impl WatchHandle {
@@ -29,6 +40,11 @@ impl WatchHandle {
 
     pub fn is_running(&self) -> bool {
         self.join.is_some() && !self.stop.load(Ordering::SeqCst)
+    }
+
+    /// 本机 P2P 节点信息；`None` = 未启用 P2P 或节点尚未启动成功。
+    pub fn peer_node(&self) -> Option<PeerNodeInfo> {
+        self.peer_node.lock().ok().and_then(|g| g.clone())
     }
 }
 
@@ -64,6 +80,8 @@ where
     let stop_flag = Arc::clone(&stop);
     let interval = Duration::from_secs(interval_secs.max(1));
     let debounce = Duration::from_secs(debounce_secs);
+    let peer_node_slot: Arc<Mutex<Option<PeerNodeInfo>>> = Arc::new(Mutex::new(None));
+    let slot_in_thread = Arc::clone(&peer_node_slot);
 
     let join = std::thread::Builder::new()
         .name("selfshare-watch".into())
@@ -85,6 +103,13 @@ where
                             let _ = crate::client::Client::new(&cfg.url, &cfg.vault, &cfg.token)
                                 .peer_register(&pid, &n.listen, &[], &cfg.host_id);
                             on_message(&format!("P2P 节点已启动：{}", n.listen), 0, 0);
+                            // 节点信息写入共享槽，供 WatchHandle::peer_node() 只读查询
+                            if let Ok(mut slot) = slot_in_thread.lock() {
+                                *slot = Some(PeerNodeInfo {
+                                    peer_id: pid.clone(),
+                                    listen: n.listen.clone(),
+                                });
+                            }
                             peer_node = Some((n, pid));
                         }
                         Err(e) => on_message(&format!("P2P 启动失败：{}", e), 0, 0),
@@ -133,7 +158,7 @@ where
         })
         .expect("无法创建监视线程");
 
-    WatchHandle { stop, join: Some(join) }
+    WatchHandle { stop, join: Some(join), peer_node: peer_node_slot }
 }
 
 fn run_once<M, R>(

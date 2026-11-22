@@ -26,14 +26,20 @@
     }
   }
 
+  let nodeStatus: any = null
+
   async function loadPeers() {
-    if (!selectedMount) { peers = []; return }
+    if (!selectedMount) { peers = []; nodeStatus = null; return }
     try {
-      peers = await invoke('list_peers', { mount_name: selectedMount })
+      // 只读快照：设置开关、监控状态、本机节点与中心发现列表一次取回
+      const st: any = await invoke('p2p_status', { name: selectedMount })
+      nodeStatus = st
+      peers = st.peers || []
       peerError = ''
     } catch (e) {
       peerError = String(e)
       peers = []
+      nodeStatus = null
     }
   }
 
@@ -132,6 +138,17 @@
       <button class="secondary" on:click={loadPeers}>刷新</button>
     </div>
     {#if peerError}<div class="error">{peerError}</div>{/if}
+    {#if nodeStatus}
+      <div class="node-status">
+        {#if nodeStatus.node}
+          本机节点：<strong>运行中</strong>（<code>{nodeStatus.node.listen}</code>）
+        {:else if nodeStatus.watching}
+          本机节点：未启动（设置开关{nodeStatus.enabled ? '已开启，节点启动失败' : '未开启'}）
+        {:else}
+          本机节点：未运行（监控未启动；开关{nodeStatus.enabled ? '已开启' : '未开启'}）
+        {/if}
+      </div>
+    {/if}
     {#if peers.length === 0}
       <p class="hint">当前没有在线节点。开启设置中的 P2P 后，节点会在同步时注册到中心服务端。</p>
     {:else}
@@ -166,6 +183,11 @@
   .error { margin-top: 1rem; padding: 0.75rem; background: #8b0000; border-radius: 4px; }
   .success { margin-top: 1rem; padding: 1rem; background: #1a4a3a; border-radius: 6px; border-left: 4px solid #1a936f; }
   .success code { background: #1a1a2e; padding: 0.2rem 0.4rem; border-radius: 3px; }
+  .node-status {
+    margin-top: 0.75rem; padding: 0.6rem 0.75rem; border-radius: 6px;
+    background: #1a1a2e; font-size: 0.85rem; color: #bbb;
+  }
+  .node-status code { background: #10101e; padding: 0.2rem 0.4rem; border-radius: 3px; }
   table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.85rem; }
   th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid #333; }
   th { color: #888; }
