@@ -48,7 +48,37 @@
 
 ---
 
-# [v2.1.3] — 2026-11-23
+# [v2.1.4] — 2026-11-23
+
+发布日期：2026-11-23
+发布范围：稳健性补丁——**空文件 blob 416 双端修复**（v2.1.3 release 二进制回归抓到 Go 端同缺陷：空文件此前永久无法 pull）+ Python 服务端三项并发/健壮性修复 + **v1 Flutter GUI 三项缺陷修复**（多 agent 审计，`LOOP-20261123-03/09`）。semver：补丁位只收修复。
+协议兼容：HTTP `ServiceVersion` 保持 `1.0`，Range 响应头与 Python 逐字一致，磁盘数据格式不变。
+
+## 服务端（Go + Python 双端）
+
+- **空文件 blob 416 修复（Go + Python 双端对齐）**：无 Range 头的普通 GET/HEAD 此前被无条件 416 拒绝（total=0 时 `start > end` 恒成立）——**空文件永久无法 pull 且每轮 sync 报下载失败**。修复后仅显式带 unsatisfiable Range 头才 416；回归测试 `test_empty_file_pull_survives_range_check` 先在 Python 端过、对 v2.1.3 Go release 二进制**失败**（循环抓到双端缺口），修复后对 Go 二进制通过。
+- **Range 后缀语义修复（Go）**：`bytes=-N` 此前被当成「前 N 字节」，现按 HTTP 语义返回最后 N 字节（对齐 Python 修复）。
+- **Python 服务端并发修复（多 agent 审计 D1/D3，高/中）**：① `store.py::commit` 用 `BEGIN IMMEDIATE` 跨连接串行化——并发 commit 此前可竞态绕过 C4 base 检查静默覆盖第三方提交；`__init__` 收尾提交修复遗留打开事务；② `pairing.py::PairCodeStore` 加进程内互斥——一次性配对码并发双兑（对齐 Go v2.1.2 共享 store 修复）；③ blobbulk 非字典项进入 `failed[]` 而非抛 500。
+- **Range 后缀修复（Python 同步落地）**：`bytes=-N` 语义对齐（与 Go 同款）。
+
+## 客户端（v1 Flutter GUI）
+
+- **三项缺陷修复（多 agent 审计）**：① probe 回调补 `dialogCtx.mounted` 守卫（弹窗中途关闭不再 after-dispose 异常）；② pairMount 失败在弹窗内以红色文本呈现（此前静默复位，用户须自行退出弹窗才能看到错误——D7「失败必须可见」口径）；③ 添加挂载对话框的三个 TextEditingController 关闭后 dispose（修复泄漏 + 配对码内存滞留）。
+
+## 验证
+
+| 项目 | 结果 |
+| --- | --- |
+| GitHub Actions `ci.yml`（L1 24 例含 2 个新回归；rust 双平台；gui analyze+build 含 Flutter 修复） | 全绿 |
+| GitHub Actions `ci-v2.yml`（compat L4 对新编译 Go 二进制——空文件回归在此通过；`go test -race` + vet） | 全绿 |
+| Tauri Windows 安装包（NSIS，版本 2.1.4） | 流水线构建 + Windows 本机静默安装启动验证（截图证据） |
+| `release.yml` 资产校验（2 zip + 5 二进制 + 1 NSIS，非空 + 集合互斥） | 流水线内建 |
+
+## 升级说明
+
+服务端**建议升级**（Go：空文件同步修复；Python 源码部署用户：并发 commit 竞态与配对码双兑修复）；客户端安装包直接覆盖升级；数据目录通用。
+
+
 
 发布日期：2026-11-23
 发布范围：Rust 客户端数据安全补丁——**scan_dir 严格化（防误删传播）+ 手动同步/后台巡检互斥**（上轮多 agent 审计立项的两项同步语义修复，`LOOP-20261123-07`）。Go 服务端与 v1 便携包按既定 release 流程重打（服务端代码与 v2.1.2 相同，仅版本号随版推进）。semver：补丁位只收修复。
