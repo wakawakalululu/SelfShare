@@ -70,6 +70,7 @@ class _HomePageState extends State<HomePage> {
     var busy = false;
     var probing = false;
     String? probeMsg;
+    String? pairError;
 
     final submit = await showDialog<bool>(
       context: context,
@@ -123,6 +124,7 @@ class _HomePageState extends State<HomePage> {
                                   probeMsg = null;
                                 });
                                 final ok = await state.bridge.probe(url.text.trim());
+                                if (!dialogCtx.mounted) return;
                                 setDialogState(() {
                                   probing = false;
                                   probeMsg = ok ? '连接正常' : '连不上，检查地址与服务端状态';
@@ -143,6 +145,14 @@ class _HomePageState extends State<HomePage> {
                               ? const Color(0xFF16A34A)
                               : const Color(0xFFDC2626),
                         ),
+                      ),
+                    ),
+                  if (pairError != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        pairError!,
+                        style: const TextStyle(fontSize: 12, color: Color(0xFFDC2626)),
                       ),
                     ),
                   const SizedBox(height: 12),
@@ -193,7 +203,16 @@ class _HomePageState extends State<HomePage> {
                       );
                       if (dialogCtx.mounted) {
                         setDialogState(() => busy = false);
-                        if (ok) Navigator.pop(dialogCtx, true);
+                        setDialogState(() {
+                        busy = false;
+                        // D7 口径：失败必须呈现给用户，不得静默复位弹窗
+                        pairError = state.error ?? '配对失败，请检查配对码与服务端地址';
+                        });
+                        if (ok) {
+                            Navigator.pop(dialogCtx, true);
+                        } else {
+                            // pairError 已在上方呈现于弹窗内
+                        }
                       }
                     },
               icon: busy
@@ -212,6 +231,10 @@ class _HomePageState extends State<HomePage> {
     if (submit == true && mounted) {
       // 由 AppState.pairMount 负责刷新列表与提示
     }
+    // 释放对话框控制器（agent ⑦ 缺陷③：此前从不 dispose，泄漏 + 配对码内存滞留）
+    folder.dispose();
+    url.dispose();
+    code.dispose();
   }
 
 }
